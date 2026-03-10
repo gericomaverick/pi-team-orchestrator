@@ -1,0 +1,39 @@
+{
+  "name": "pi-team-orchestrator",
+  "version": "0.1.0",
+  "description": "Pi extension for team/project orchestration with markdown-defined teams and session-backed state",
+  "keywords": [
+    "pi-package",
+    "pi-extension",
+    "orchestration",
+    "agents"
+  ],
+  "license": "MIT",
+  "type": "module",
+  "files": [
+    "src",
+    "teams",
+    "README.md",
+    "CHANGELOG.md",
+    "LICENSE"
+  ],
+  "pi": {
+    "extensions": [
+      "./src/index.ts"
+    ]
+  },
+  "scripts": {
+    "smoke": "pi -e ./src/index.ts -p \"/team-list\" \"/team-load web-app\" \"/project-switch pi-team-orchestrator\" \"/project-bind-team web-app\" \"/team-status\"",
+    "pack:check": "npm pack --dry-run",
+    "release": "bash ./release.sh",
+    "release:dry": "bash ./release.sh --dry-run"
+  },
+  "peerDependencies": {
+    "@mariozechner/pi-coding-agent": "*",
+    "@mariozechner/pi-ai": "*",
+    "@sinclair/typebox": "*"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}
