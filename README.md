@@ -145,7 +145,7 @@ NPM_OTP=123456 npm run release
 ### 4) Install from npm
 
 ```bash
-pi install npm:@gericomaverick/pi-team-orchestrator@0.1.1
+pi install npm:@gericomaverick/pi-team-orchestrator@0.1.2
 ```
 
 Then start Pi normally and use:

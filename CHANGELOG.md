@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.1.2] - 2026-03-10
+
+### Changed
+- Bumped release version to prepare the first trusted-publisher CI release.
+- No functional runtime changes.
+
 ## [0.1.1] - 2026-03-10
 
 ### Changed
