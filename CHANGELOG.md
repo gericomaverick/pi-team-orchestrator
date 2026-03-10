@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.1.4] - 2026-03-10
+
+### Changed
+- Updated GitHub publish workflow to trigger on `v*` tag pushes (in addition to release-published/manual dispatch).
+- Added tag/package version validation for tag-push-triggered publishes.
+
 ## [0.1.3] - 2026-03-10
 
 ### Added

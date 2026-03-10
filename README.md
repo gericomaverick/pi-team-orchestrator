@@ -278,7 +278,7 @@ NPM_OTP=123456 npm run release
 Install from npm:
 
 ```bash
-pi install npm:@gericomaverick/pi-team-orchestrator@0.1.3
+pi install npm:@gericomaverick/pi-team-orchestrator@0.1.4
 ```
 
 ---
