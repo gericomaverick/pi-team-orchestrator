@@ -1,6 +1,6 @@
 {
-  "name": "pi-team-orchestrator",
-  "version": "0.1.0",
+  "name": "@gericomaverick/pi-team-orchestrator",
+  "version": "0.1.1",
   "description": "Pi extension for team/project orchestration with markdown-defined teams and session-backed state",
   "keywords": [
     "pi-package",

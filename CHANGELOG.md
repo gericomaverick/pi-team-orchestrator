@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.1.1] - 2026-03-10
+
+### Changed
+- Switched npm package name to scoped publish target: `@gericomaverick/pi-team-orchestrator`.
+- Updated installation instructions for scoped package install.
+
 ## [0.1.0] - 2026-03-10
 
 ### Added

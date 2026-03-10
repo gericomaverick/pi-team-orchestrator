@@ -39,7 +39,12 @@ echo "==> Verifying npm auth"
 npm whoami >/dev/null
 
 echo "==> Publishing to npm"
-npm publish
+if [[ -n "${NPM_OTP:-}" ]]; then
+  echo "==> Using NPM_OTP from environment"
+  npm publish --otp "$NPM_OTP"
+else
+  npm publish
+fi
 
 echo "==> Done"
 echo "Install command: pi install npm:${NAME}@${VERSION}"

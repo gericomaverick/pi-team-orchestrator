@@ -134,12 +134,18 @@ Publish:
 npm run release
 ```
 
+If your npm account enforces 2FA for publish, pass an OTP code:
+
+```bash
+NPM_OTP=123456 npm run release
+```
+
 (Equivalent manual flow: `npm login && npm publish`)
 
 ### 4) Install from npm
 
 ```bash
-pi install npm:pi-team-orchestrator@0.1.0
+pi install npm:@gericomaverick/pi-team-orchestrator@0.1.1
 ```
 
 Then start Pi normally and use:
