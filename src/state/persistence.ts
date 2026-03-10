@@ -62,6 +62,9 @@ function normalizeState(input: OrchestratorState): OrchestratorState {
         canonDocs: Array.isArray(project.canonDocs) ? project.canonDocs : [],
         decisions: Array.isArray(project.decisions) ? project.decisions : [],
         handoffs: Array.isArray(project.handoffs) ? project.handoffs : [],
+        checkpoints: Array.isArray((project as { checkpoints?: unknown[] }).checkpoints)
+          ? ((project as { checkpoints?: unknown[] }).checkpoints ?? [])
+          : [],
         roleStatuses: project.roleStatuses && typeof project.roleStatuses === "object" ? project.roleStatuses : {},
       },
     ]),
@@ -70,6 +73,9 @@ function normalizeState(input: OrchestratorState): OrchestratorState {
   return {
     activeTeamId: input.activeTeamId,
     activeProjectId: input.activeProjectId,
+    footerMode: input.footerMode === "compact" || input.footerMode === "rich" ? input.footerMode : "rich",
+    messengerMode: input.messengerMode === "allowed" || input.messengerMode === "blocked" ? input.messengerMode : "blocked",
+    teamBoardMode: input.teamBoardMode === "off" || input.teamBoardMode === "on" ? input.teamBoardMode : "on",
     projects,
   };
 }

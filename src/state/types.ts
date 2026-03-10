@@ -85,6 +85,17 @@ export interface Blocker {
   nextAction?: string;
 }
 
+export interface CheckpointEntry {
+  id: string;
+  timestamp: string;
+  roleId: string;
+  summary: string;
+  status: "in_progress" | "handoff" | "done" | "blocked";
+  taskId?: string;
+  nextRoleId?: string;
+  evidence?: string[];
+}
+
 export interface ProjectState {
   id: string;
   name: string;
@@ -97,12 +108,20 @@ export interface ProjectState {
   canonDocs: CanonDoc[];
   decisions: DecisionLogEntry[];
   handoffs: HandoffEvent[];
+  checkpoints: CheckpointEntry[];
   roleStatuses: Record<string, RoleStatus>;
 }
+
+export type FooterMode = "compact" | "rich";
+export type MessengerMode = "blocked" | "allowed";
+export type TeamBoardMode = "on" | "off";
 
 export interface OrchestratorState {
   activeTeamId?: string;
   activeProjectId?: string;
+  footerMode?: FooterMode;
+  messengerMode?: MessengerMode;
+  teamBoardMode?: TeamBoardMode;
   projects: Record<string, ProjectState>;
 }
 

@@ -28,6 +28,9 @@ Output:
 - visible CLI state
 - `/agent-status`
 - `/handoff-log`
+- `/checkpoint-log`
+- `/blockers`
+- `/decision-log`
 
 ### Step 3: Workflow engine
 Implement:
@@ -55,7 +58,9 @@ Output:
 ### Step 5: LLM-facing tools
 Implement tools for:
 - handoff recording
+- checkpoint signing
 - blocker reporting
+- decision-log appends
 - role status updates
 - project memory summary
 

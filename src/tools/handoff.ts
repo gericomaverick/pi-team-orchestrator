@@ -1,5 +1,6 @@
 import { Type } from "@sinclair/typebox";
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
+import { appendProjectLogLine, formatLogLine } from "../state/project-log";
 import type { OrchestratorState } from "../state/types";
 
 const HandoffParams = Type.Object({
@@ -29,16 +30,41 @@ export function registerHandoffTool(
         return { content: [{ type: "text", text: "No active project" }] };
       }
 
+      const timestamp = new Date().toISOString();
+      const handoffId = `${Date.now()}`;
+
       project.handoffs.push({
-        id: `${Date.now()}`,
+        id: handoffId,
         fromRoleId: params.fromRoleId,
         toRoleId: params.toRoleId,
         taskId: params.taskId,
         summary: params.summary,
         deliverables: params.deliverables,
         blockers: params.blockers,
-        timestamp: new Date().toISOString(),
+        timestamp,
       });
+
+      project.checkpoints.push({
+        id: `checkpoint-${handoffId}`,
+        timestamp,
+        roleId: params.fromRoleId,
+        summary: `Handoff to ${params.toRoleId}: ${params.summary}`,
+        status: "handoff",
+        taskId: params.taskId,
+        nextRoleId: params.toRoleId,
+        evidence: params.deliverables,
+      });
+
+      appendProjectLogLine(
+        project.cwd,
+        formatLogLine(
+          timestamp,
+          "handoff",
+          `${params.fromRoleId} -> ${params.toRoleId} task=${params.taskId} | ${params.summary} | deliverables: ${params.deliverables.join("; ")}${
+            params.blockers?.length ? ` | blockers: ${params.blockers.join("; ")}` : ""
+          }`,
+        ),
+      );
 
       persistState();
       updateIndicator(ctx);

@@ -1,128 +1,263 @@
-# Pi Team Orchestrator Starter
+# Pi Team Orchestrator
 
-A starter design and scaffold for a Pi Mono extension that lets you run an agentic team workflow for either:
+A Pi extension for running multi-role team workflows from the normal CLI chat interface.
 
-- web app development
-- game development
+It supports:
+- Team loading from markdown role files (`teams/<team>/roles/*.md`)
+- Project context under `~/.pi/projects`
+- Session-backed orchestration state (team/project/phase/handoffs/blockers/decisions)
+- Structured coordination tools (status, handoff, blocker, decision events)
+- Live footer/status indicators
 
-The extension is designed around:
-- team selection
-- project selection and project/team binding
-- shared session-backed memory
-- task hand-offs between agents
-- drift prevention via canon docs and required-reading rules
-- visible CLI indicators so you can see what team is loaded and what agents are doing
+---
 
-## Intended goals
+## Default behavior (important)
 
-This extension should make Pi feel like a team orchestration layer instead of a single-agent CLI.
+This extension is **chat-first** and **state-first**:
 
-Core user-facing capabilities:
-1. Show which team is currently loaded
-2. Show which project is active
-3. Bind a team to a project
-4. Switch projects cleanly
-5. See active task / current responsible agent
-6. See recent hand-offs and blockers
-7. Enforce required canon docs and workflow steps
-8. Reuse the same workflow engine for different team types
+- You communicate to the team through normal CLI chat prompts.
+- Coordination is recorded as structured events (not chat-thread inboxes).
+- `pi_messenger` is **blocked by default**.
 
-## Scope of this starter
+You can override messenger policy per session:
 
-This pack contains:
-- architecture and workflow docs
-- suggested data model
-- CLI command design
-- drift-prevention rules
-- minimal TypeScript scaffold files
+```text
+/messenger-mode allowed
+```
 
-The scaffold is intentionally light and should be adapted to the exact Pi Mono extension APIs in the version you are running.
+Return to default:
 
-## Suggested package structure
+```text
+/messenger-mode blocked
+```
 
-- `docs/` design and workflow docs
-- `src/index.ts` extension entry point
-- `src/state/` in-session state model and helpers
-- `src/commands/` slash commands for team/project/task operations
-- `src/ui/` status / activity rendering
-- `src/tools/` optional LLM-facing tools for handoffs and memory
+---
 
-## MVP command surface
+## Quick start
 
-Implemented commands:
-- `/team-status`
-- `/team-list`
-- `/team-load web-app`
-- `/team-load game-dev`
-- `/project-list`
-- `/project-switch <name>`
-- `/project-bind-team <team>`
-- `/project-status`
-- `/agent-status`
-- `/handoff-log`
-- `/workflow-next`
-
-## MVP UI indicators
-
-At minimum, expose:
-- active team
-- active project
-- current phase
-- current responsible agent
-- current task
-- agent state: idle / planning / working / blocked / review
-- pending handoff count
-
-## Recommended implementation approach
-
-Build this in four stages:
-
-### Stage 1
-Project/team state + commands + simple status panel
-
-### Stage 2
-Workflow state machine + handoff logging + required-reading enforcement
-
-### Stage 3
-Drift prevention + canon docs + approval gates
-
-### Stage 4
-Cross-project memory, summaries, and richer activity views
-
-## Install locally (development)
-
-From this project directory:
+Start Pi with the extension from this repo root:
 
 ```bash
 pi -e ./src/index.ts
 ```
 
-Quick smoke run:
+Set context:
+
+```text
+/team-list
+/team-load web-app
+/project-init my-project --bind-active-team
+/team-status
+/project-status
+```
+
+If project already exists:
+
+```text
+/project-switch my-project
+/project-bind-team web-app
+```
+
+### Copy/paste session script (new project smoke test)
+
+Use this directly in a fresh Pi session (replace `my-new-project` and optionally team id):
+
+```text
+/messenger-mode blocked
+/team-list
+/team-load web-app
+/project-init my-new-project --bind-active-team
+/team-status
+/project-status
+
+Scout this project and produce a concise brief: current state, top risks, and unknowns. Then hand off to planner.
+Planner: create a milestone plan with acceptance criteria and explicit dependencies.
+/session-signoff --role planner --status handoff --next architect
+/workflow-next
+/agent-status
+/handoff-log
+/checkpoint-log
+/blockers
+/decision-log
+```
+
+For game workflows, swap `web-app` with `game-dev`.
+
+Checkpoint/handoff events are also written to a project-local file for cross-session recovery:
+- `<project>/.pi-orchestrator/checkpoints.md`
+
+### Copy/paste resume script (existing project)
+
+```text
+/messenger-mode blocked
+/project-switch my-new-project
+/team-load web-app
+/project-bind-team web-app
+/checkpoint-log
+/team-status
+/workflow-next
+/agent-status
+/handoff-log
+/blockers
+```
+
+`/team-status` now falls back to the latest checkpoint log when in-memory state is empty, so Current Role/Role State can recover as e.g. `architect / queued`.
+
+---
+
+## How to communicate with the agents
+
+After team/project context is set, type normal prompts in CLI.
+
+Examples:
+
+```text
+Scout this repo for auth and payment touchpoints, then hand off to planner with top risks.
+```
+
+```text
+Planner: break this into milestones with acceptance criteria and dependencies.
+```
+
+```text
+Architect + coder: propose a contract-first API change plan and implement the first safe slice.
+```
+
+```text
+Reviewer: evaluate current changes for release blockers and provide go/no-go recommendation.
+```
+
+The extension injects orchestration context at turn start so these prompts are interpreted as team workflow instructions.
+
+---
+
+## Command reference
+
+### Team
+- `/team-list`
+- `/team-load <team-id>` (or `/team-load` for picker)
+- `/team-status` (or `/team-status <team-id>`)
+- `/footer-mode <rich|compact>`
+- `/team-board <on|off>`
+- `/messenger-mode <blocked|allowed>`
+
+### Project
+- `/project-list`
+- `/project-init <project-id> [--bind-active-team]`
+- `/project-switch <project-id>` (or `/project-switch` for picker)
+- `/project-bind-team <team-id>` (or `/project-bind-team` for picker)
+- `/project-status` (or `/project-status <project-id>`)
+
+### Workflow visibility
+- `/agent-status`
+- `/handoff-log`
+- `/blockers`
+- `/decision-log`
+- `/checkpoint-log`
+- `/session-signoff [--role ... --status ... --next ... --task ... --summary ...]`
+- `/workflow-next`
+
+### Manual checkpoint signing
+- `/checkpoint-sign [--summary <text>] [--role <role-id>] [--status in_progress|handoff|done|blocked] [--task <task-id>] [--next <role-id>]`
+
+If `--summary` is omitted, the extension auto-generates a concise checkpoint summary.
+
+### End-of-session signoff (recommended)
+- `/session-signoff [--summary <text>] [--role <role-id>] [--status in_progress|handoff|done|blocked] [--task <task-id>] [--next <role-id>]`
+
+This signs a checkpoint (default status: `handoff`) and prints a compact resume card with the exact commands to continue in a new session.
+
+---
+
+## Structured coordination primitives
+
+The orchestrator prefers these tools internally:
+- `team_role_status`
+- `team_handoff`
+- `team_blocker`
+- `team_decision_log`
+- `team_checkpoint_sign`
+
+This keeps team coordination as a workflow/event log instead of conversational message history.
+
+---
+
+## UI indicators
+
+Footer shows live context. Rich mode includes:
+- team
+- project
+- phase
+- role + state
+- handoff count
+- blocker count
+- checkpoint count
+- messenger policy
+- active non-idle roles
+
+A card-style **Team Activity Board** widget is also rendered below the editor to show role cards (state/task/note), with latest-checkpoint fallback when in-memory activity is empty.
+
+Switch modes:
+
+```text
+/footer-mode rich
+/footer-mode compact
+```
+
+Toggle board widget:
+
+```text
+/team-board on
+/team-board off
+```
+
+---
+
+## Development
+
+### Run locally
+
+```bash
+pi -e ./src/index.ts
+```
+
+### Smoke test
 
 ```bash
 npm run smoke
 ```
 
-## Package and release
+### Optional: use `just` command shortcuts
 
-This project is publishable as a Pi package via npm (`package.json` includes a `pi.extensions` manifest pointing to `./src/index.ts`).
+A `justfile` is included with Moonglow helpers:
 
-### 1) Verify package contents
+```bash
+just --list
+just moonglow-new
+just moonglow-resume
+just moonglow-signoff-auto
+```
+
+---
+
+## Package + release
+
+### Verify package contents
 
 ```bash
 npm run pack:check
 ```
 
-### 2) Optional local install test
+### Optional local package install test
 
 ```bash
 pi install /home/openclaw/.pi/projects/pi-team-orchestrator
 pi list
 ```
 
-### 3) One-command release
+### Release
 
-Dry run (recommended first):
+Dry run:
 
 ```bash
 npm run release:dry
@@ -134,23 +269,24 @@ Publish:
 npm run release
 ```
 
-If your npm account enforces 2FA for publish, pass an OTP code:
+With npm OTP:
 
 ```bash
 NPM_OTP=123456 npm run release
 ```
 
-(Equivalent manual flow: `npm login && npm publish`)
-
-### 4) Install from npm
+Install from npm:
 
 ```bash
-pi install npm:@gericomaverick/pi-team-orchestrator@0.1.2
+pi install npm:@gericomaverick/pi-team-orchestrator@0.1.3
 ```
 
-Then start Pi normally and use:
+---
 
-- `/team-list`
-- `/team-load web-app`
-- `/project-switch <project>`
-- `/project-bind-team web-app`
+## Additional docs
+
+- `docs/06-quickstart-usage.md`
+- `docs/02-cli-workflow-and-indicators.md`
+- `docs/03-shared-memory-and-drift-prevention.md`
+- `docs/04-data-model.md`
+- `docs/05-implementation-plan.md`

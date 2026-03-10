@@ -45,6 +45,7 @@ type ProjectState = {
   canonDocs: CanonDoc[];
   decisions: DecisionLogEntry[];
   handoffs: HandoffEvent[];
+  checkpoints: CheckpointEntry[];
   roleStatuses: Record<string, RoleStatus>;
 };
 ```
@@ -89,6 +90,21 @@ type HandoffEvent = {
 };
 ```
 
+## CheckpointEntry
+
+```ts
+type CheckpointEntry = {
+  id: string;
+  timestamp: string;
+  roleId: string;
+  summary: string;
+  status: "in_progress" | "handoff" | "done" | "blocked";
+  taskId?: string;
+  nextRoleId?: string;
+  evidence?: string[];
+};
+```
+
 ## CanonDoc
 
 ```ts
@@ -123,5 +139,17 @@ type Blocker = {
   severity: "low" | "medium" | "high";
   summary: string;
   nextAction?: string;
+};
+```
+
+## OrchestratorState
+
+```ts
+type OrchestratorState = {
+  activeTeamId?: string;
+  activeProjectId?: string;
+  footerMode?: "compact" | "rich";
+  messengerMode?: "blocked" | "allowed";
+  projects: Record<string, ProjectState>;
 };
 ```

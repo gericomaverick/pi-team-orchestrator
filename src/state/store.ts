@@ -3,6 +3,9 @@ import type { OrchestratorState, ProjectState, RoleState, TeamConfig } from "./t
 export const DEFAULT_STATE: OrchestratorState = {
   activeTeamId: undefined,
   activeProjectId: undefined,
+  footerMode: "rich",
+  messengerMode: "blocked",
+  teamBoardMode: "on",
   projects: {},
 };
 
@@ -16,10 +19,18 @@ export function ensureProject(state: OrchestratorState, projectId: string, name?
       canonDocs: [],
       decisions: [],
       handoffs: [],
+      checkpoints: [],
       roleStatuses: {},
     };
   }
   const project = state.projects[projectId];
+  if (!Array.isArray(project.blockers)) project.blockers = [];
+  if (!Array.isArray(project.canonDocs)) project.canonDocs = [];
+  if (!Array.isArray(project.decisions)) project.decisions = [];
+  if (!Array.isArray(project.handoffs)) project.handoffs = [];
+  if (!Array.isArray(project.checkpoints)) project.checkpoints = [];
+  if (!project.roleStatuses || typeof project.roleStatuses !== "object") project.roleStatuses = {};
+
   if (name) project.name = name;
   if (cwd) project.cwd = cwd;
   return project;

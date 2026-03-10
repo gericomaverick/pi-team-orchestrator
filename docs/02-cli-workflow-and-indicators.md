@@ -22,11 +22,19 @@ At minimum, the extension should show:
 - `State: idle | planning | working | blocked | review`
 - `Handoffs: <count>`
 - `Blockers: <count>`
+- `Checkpoints: <count>`
+- `Messenger: on|off` (policy visibility)
+
+## Chat-first orchestration behavior
+
+- Normal CLI chat input should be treated as team-level orchestration instructions.
+- Agent coordination should be recorded as structured events/state, not message threads.
+- Pi Messenger is blocked by default and can be explicitly enabled with `/messenger-mode allowed`.
 
 ## Preferred placement
 
 ### Interactive mode
-Show a compact status line or small overlay/panel.
+Show a compact status line plus a small card-style role activity board widget.
 
 ### Print mode / non-interactive mode
 Emit short progress events whenever:
@@ -52,6 +60,8 @@ Current Task: define authoritative movement/casting boundaries
 State: working
 Pending Handoffs: 1
 Open Blockers: 0
+Checkpoints: 3
+Messenger Mode: blocked
 
 ## Slash commands
 
@@ -59,9 +69,13 @@ Open Blockers: 0
 - `/team-list`
 - `/team-load <team>`
 - `/team-status`
+- `/footer-mode <rich|compact>`
+- `/team-board <on|off>`
+- `/messenger-mode <blocked|allowed>`
 
 ### Project commands
 - `/project-list`
+- `/project-init <project>` (optional: `--bind-active-team`)
 - `/project-switch <project>`
 - `/project-bind-team <team>`
 - `/project-status`
@@ -69,9 +83,12 @@ Open Blockers: 0
 ### Workflow commands
 - `/workflow-next`
 - `/handoff-log`
+- `/checkpoint-log`
+- `/checkpoint-sign ...` (summary optional; auto-generated if omitted)
+- `/session-signoff ...` (recommended end-of-session checkpoint + resume card)
 - `/agent-status`
 - `/blockers`
-- `/canon-status`
+- `/decision-log`
 
 ## Role activity model
 

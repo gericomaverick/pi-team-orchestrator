@@ -7,7 +7,10 @@ import { registerWorkflowCommands } from "./commands/workflow";
 import { restoreOrchestratorState, persistOrchestratorState } from "./state/persistence";
 import { DEFAULT_STATE, ensureRoleStatusesForTeam, setActiveTeam } from "./state/store";
 import { loadTeamsFromMarkdown } from "./state/team-loader";
-import type { OrchestratorState, TeamConfig } from "./state/types";
+import type { OrchestratorState, ProjectState, TeamConfig } from "./state/types";
+import { registerBlockerTool } from "./tools/blocker";
+import { registerCheckpointSignTool } from "./tools/checkpoint-sign";
+import { registerDecisionLogTool } from "./tools/decision-log";
 import { registerHandoffTool } from "./tools/handoff";
 import { registerRoleStatusTool } from "./tools/role-status";
 import { updateStatusIndicator } from "./ui/status-indicator";
@@ -50,6 +53,18 @@ function loadTeams(ctx?: ExtensionContext) {
 }
 
 function syncStateWithLoadedTeams() {
+  if (state.footerMode !== "compact" && state.footerMode !== "rich") {
+    state.footerMode = "rich";
+  }
+
+  if (state.messengerMode !== "allowed" && state.messengerMode !== "blocked") {
+    state.messengerMode = "blocked";
+  }
+
+  if (state.teamBoardMode !== "on" && state.teamBoardMode !== "off") {
+    state.teamBoardMode = "on";
+  }
+
   if (state.activeTeamId) {
     const normalized = normalizeTeamId(state.activeTeamId);
     if (normalized !== state.activeTeamId) state.activeTeamId = normalized;
@@ -123,10 +138,36 @@ export default function register(pi: ExtensionAPI) {
     updateIndicator: refreshIndicator,
   });
 
-  registerWorkflowCommands(pi, { getState });
+  registerWorkflowCommands(pi, {
+    getState,
+    persistState: persist,
+    updateIndicator: refreshIndicator,
+  });
 
   registerHandoffTool(pi, getState, persist, refreshIndicator);
   registerRoleStatusTool(pi, getState, persist, refreshIndicator);
+  registerBlockerTool(pi, getState, persist, refreshIndicator);
+  registerDecisionLogTool(pi, getState, persist, refreshIndicator);
+  registerCheckpointSignTool(pi, getState, persist, refreshIndicator);
+
+  pi.on("before_agent_start", async (event) => {
+    const orchestrationBlock = buildOrchestrationPromptBlock(state, teams);
+    if (!orchestrationBlock) return;
+    return {
+      systemPrompt: `${event.systemPrompt}\n\n${orchestrationBlock}`,
+    };
+  });
+
+  pi.on("tool_call", async (event) => {
+    if (event.toolName !== "pi_messenger") return;
+    if (state.messengerMode === "allowed") return;
+
+    return {
+      block: true,
+      reason:
+        "Pi Messenger is blocked by default in this project. Use normal chat + structured team tools (team_role_status, team_handoff, team_blocker, team_decision_log). Run /messenger-mode allowed to override.",
+    };
+  });
 
   pi.on("session_start", async (_event, ctx) => {
     loadTeams(ctx);
@@ -153,4 +194,61 @@ export default function register(pi: ExtensionAPI) {
   pi.on("turn_start", async (_event, ctx) => {
     refreshIndicator(ctx);
   });
+}
+
+function buildOrchestrationPromptBlock(state: OrchestratorState, teams: TeamConfig[]): string {
+  const activeProject = state.activeProjectId ? state.projects[state.activeProjectId] : undefined;
+  const activeTeam = resolveActiveTeam(state, teams, activeProject);
+  const activeRole = inferCurrentRole(activeProject);
+
+  const contextLines = [
+    `- Active team: ${activeTeam?.id ?? "none"}`,
+    `- Active project: ${activeProject?.name ?? "none"}`,
+    `- Phase: ${activeProject?.currentPhase ?? activeTeam?.defaultPhase ?? "none"}`,
+    `- Current role: ${activeRole ?? "none"}`,
+    `- Current task: ${activeProject?.currentTask?.title ?? "none"}`,
+    `- Blockers: ${activeProject?.blockers.length ?? 0}`,
+    `- Handoffs: ${activeProject?.handoffs.length ?? 0}`,
+    `- Checkpoints: ${activeProject?.checkpoints.length ?? 0}`,
+    `- Messenger mode: ${state.messengerMode === "allowed" ? "allowed" : "blocked"}`,
+    `- Team board: ${state.teamBoardMode === "off" ? "off" : "on"}`,
+  ];
+
+  return [
+    "[Team Orchestrator Mode]",
+    "Treat the user's normal chat input as direct instructions to the active team workflow.",
+    "Use structured coordination, not conversational inbox threads.",
+    "Preferred coordination primitives:",
+    "- team_role_status",
+    "- team_handoff",
+    "- team_blocker",
+    "- team_decision_log",
+    "- team_checkpoint_sign",
+    "When completing a meaningful step, sign a checkpoint (team_checkpoint_sign), especially at handoffs.",
+    "Human-facing status commands:",
+    "- /team-status, /project-status, /agent-status, /handoff-log, /blockers, /decision-log, /checkpoint-log, /session-signoff, /team-board, /workflow-next",
+    "Do not call pi_messenger unless messenger mode is explicitly set to 'allowed'.",
+    "Current orchestrator context:",
+    ...contextLines,
+  ].join("\n");
+}
+
+function resolveActiveTeam(
+  state: OrchestratorState,
+  teams: TeamConfig[],
+  activeProject?: ProjectState,
+): TeamConfig | undefined {
+  const direct = state.activeTeamId ? teams.find((team) => team.id === state.activeTeamId) : undefined;
+  if (direct) return direct;
+  const boundTeamId = activeProject?.boundTeamId;
+  if (!boundTeamId) return undefined;
+  return teams.find((team) => team.id === boundTeamId);
+}
+
+function inferCurrentRole(project?: ProjectState): string | undefined {
+  if (!project) return undefined;
+  if (project.currentTask?.assignedRoleId) return project.currentTask.assignedRoleId;
+  return Object.values(project.roleStatuses).find((status) =>
+    ["reading", "planning", "working", "reviewing", "blocked"].includes(status.state),
+  )?.roleId;
 }

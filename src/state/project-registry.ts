@@ -29,3 +29,26 @@ export function listProjectCandidates(projectsRoot = getProjectsRoot()): Project
 export function resolveProjectPath(projectId: string, projectsRoot = getProjectsRoot()): string {
   return path.join(projectsRoot, projectId);
 }
+
+export function validateProjectId(projectId: string): string | undefined {
+  const value = projectId.trim();
+  if (!value) return "Project id cannot be empty.";
+  if (value === "." || value === "..") return "Project id cannot be '.' or '..'.";
+  if (value.includes("/") || value.includes("\\")) return "Project id cannot contain path separators.";
+  return undefined;
+}
+
+export function ensureProjectDirectory(projectId: string, projectsRoot = getProjectsRoot()): { cwd: string; created: boolean } {
+  fs.mkdirSync(projectsRoot, { recursive: true });
+
+  const cwd = resolveProjectPath(projectId, projectsRoot);
+  if (fs.existsSync(cwd)) {
+    if (!fs.statSync(cwd).isDirectory()) {
+      throw new Error(`Project path exists but is not a directory: ${cwd}`);
+    }
+    return { cwd, created: false };
+  }
+
+  fs.mkdirSync(cwd, { recursive: true });
+  return { cwd, created: true };
+}
