@@ -349,19 +349,27 @@ pi list
 
 ### Release
 
-Dry run:
+Recommended GitHub release flow:
+
+1. Bump `package.json` version and update `CHANGELOG.md`.
+2. Push the commit.
+3. Push a matching tag such as `v0.2.0`.
+4. GitHub Actions creates the GitHub Release.
+5. The publish workflow then publishes to npm from GitHub.
+
+Local dry run:
 
 ```bash
 npm run release:dry
 ```
 
-Publish:
+Local publish:
 
 ```bash
 npm run release
 ```
 
-With npm OTP:
+Local publish with npm OTP:
 
 ```bash
 NPM_OTP=123456 npm run release
@@ -370,8 +378,18 @@ NPM_OTP=123456 npm run release
 Install from npm:
 
 ```bash
-pi install npm:@gericomaverick/pi-team-orchestrator@0.1.4
+pi install npm:@gericomaverick/pi-team-orchestrator@0.2.0
 ```
+
+GitHub workflows:
+- [`.github/workflows/github-release.yml`](.github/workflows/github-release.yml): creates a GitHub Release on `v*` tag push
+- [`.github/workflows/npm-publish.yml`](.github/workflows/npm-publish.yml): publishes to npm on GitHub Release publish, or manual dispatch
+
+npm package setting:
+- If you want GitHub trusted publishing with an emergency token fallback, choose `Require two-factor authentication or a granular access token with bypass 2fa enabled`.
+- If you want only trusted publishing and never want token-based fallback, choose `Require two-factor authentication and disallow tokens`.
+
+This repo now supports both trusted publishing and `NPM_TOKEN` fallback in GitHub Actions, so the first option is the pragmatic choice.
 
 ---
 
@@ -382,3 +400,4 @@ pi install npm:@gericomaverick/pi-team-orchestrator@0.1.4
 - `docs/03-shared-memory-and-drift-prevention.md`
 - `docs/04-data-model.md`
 - `docs/05-implementation-plan.md`
+- `docs/08-release-and-publishing.md`

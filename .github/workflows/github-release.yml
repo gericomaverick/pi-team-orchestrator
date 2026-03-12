@@ -1,0 +1,48 @@
+name: Create GitHub Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "Git tag to release (for example v0.2.0)"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    env:
+      RELEASE_REF: ${{ github.event_name == 'workflow_dispatch' && inputs.ref || github.ref_name }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.RELEASE_REF }}
+          fetch-depth: 0
+
+      - name: Validate tag matches package version
+        shell: bash
+        run: |
+          set -euo pipefail
+          TAG="${RELEASE_REF#v}"
+          PKG_VERSION="$(node -p "require('./package.json').version")"
+          echo "Tag: $TAG"
+          echo "package.json version: $PKG_VERSION"
+          if [[ "$TAG" != "$PKG_VERSION" ]]; then
+            echo "Tag version does not match package.json version" >&2
+            exit 1
+          fi
+
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ env.RELEASE_REF }}
+          generate_release_notes: true
+          make_latest: true

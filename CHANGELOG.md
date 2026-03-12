@@ -4,6 +4,13 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+- New GitHub Actions workflow to create a GitHub Release automatically on `v*` tag pushes.
+- New release publishing guide in `docs/08-release-and-publishing.md`.
+
+### Changed
+- GitHub npm publish workflow now runs on GitHub Release publish and supports `NPM_TOKEN` fallback in addition to trusted publishing.
+
 ## [0.2.0] - 2026-03-12
 
 ### Added
