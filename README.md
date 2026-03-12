@@ -353,7 +353,7 @@ Recommended GitHub release flow:
 
 1. Bump `package.json` version and update `CHANGELOG.md`.
 2. Push the commit.
-3. Push a matching tag such as `v0.2.0`.
+3. Push a matching tag such as `v0.2.1`.
 4. GitHub Actions creates the GitHub Release.
 5. The publish workflow then publishes to npm from GitHub.
 
@@ -378,7 +378,7 @@ NPM_OTP=123456 npm run release
 Install from npm:
 
 ```bash
-pi install npm:@gericomaverick/pi-team-orchestrator@0.2.0
+pi install npm:@gericomaverick/pi-team-orchestrator@0.2.1
 ```
 
 GitHub workflows:

@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-03-12
+
 ### Added
 - New GitHub Actions workflow to create a GitHub Release automatically on `v*` tag pushes.
 - New release publishing guide in `docs/08-release-and-publishing.md`.
