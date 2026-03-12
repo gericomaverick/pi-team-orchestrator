@@ -87,7 +87,7 @@ For a new project:
 /team-load <team>
 /project-init <project> --bind-active-team
 /project-brief <concise overview>
-/resume
+/workflow-resume
 ```
 
 For an existing project:
@@ -96,7 +96,7 @@ For an existing project:
 /project-switch <project>
 /team-load <team>
 /project-bind-team <team>
-/resume
+/workflow-resume
 ```
 
 For an older pre-upgrade project:
@@ -106,7 +106,7 @@ For an older pre-upgrade project:
 /team-load <team>
 /project-bind-team <team>
 /project-migrate
-/resume
+/workflow-resume
 ```
 
 At the end of a work chunk:
@@ -119,7 +119,7 @@ At the end of a work chunk:
 
 Use this as the normal command set:
 
-- `/resume`
+- `/workflow-resume`
 - `/project-brief`
 - `/workflow-status`
 - `/workflow-mode`

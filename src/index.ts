@@ -262,9 +262,9 @@ function buildOrchestrationPromptBlock(state: OrchestratorState, teams: TeamConf
     "Do not hand off for every micro-task. Keep ownership until the task packet reaches a resumable boundary.",
     "Only record durable decisions, real blockers, meaningful checkpoints, and genuine ownership changes.",
     "When completing a meaningful step, sign a checkpoint (team_checkpoint_sign), especially at handoffs.",
-    "Primary operator commands: /resume, /workflow-status, /task-status, /workflow-next, /session-signoff, /workflow-mode.",
+    "Primary operator commands: /workflow-resume, /workflow-status, /task-status, /workflow-next, /session-signoff, /workflow-mode.",
     "Human-facing status commands:",
-    "- /resume, /project-brief, /project-migrate, /workflow-status, /workflow-reseed, /task-status, /workflow-mode, /team-status, /project-status, /agent-status, /handoff-log, /blockers, /decision-log, /checkpoint-log, /session-signoff, /team-board, /workflow-next",
+    "- /workflow-resume, /project-brief, /project-migrate, /workflow-status, /workflow-reseed, /task-status, /workflow-mode, /team-status, /project-status, /agent-status, /handoff-log, /blockers, /decision-log, /checkpoint-log, /session-signoff, /team-board, /workflow-next",
     "Do not call pi_messenger unless messenger mode is explicitly set to 'allowed'.",
     gateIssues.length
       ? "Workflow is currently gated. The only acceptable next action is to repair the gate issues before resuming normal work."

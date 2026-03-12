@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.2.8] - 2026-03-12
+
+### Changed
+- Renamed the primary resume command from `/resume` to `/workflow-resume` to avoid conflict with Pi's built-in command set.
+- Removed startup warning spam for roles that have not yet filled every parsed markdown contract section.
+
 ## [0.2.7] - 2026-03-12
 
 ### Added

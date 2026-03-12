@@ -131,15 +131,6 @@ export function loadTeamsFromMarkdown(teamsRoot: string): TeamLoadResult {
         warnings.push(`Team '${teamId}' contains duplicate role '${role.id}'.`);
       }
       seenRoleIds.add(role.id);
-      if (!role.inputsRequired?.length) {
-        warnings.push(`Role '${role.id}' in team '${teamId}' has no parsed 'Inputs Required' contract.`);
-      }
-      if (!role.outputContract?.length && !role.deliverables?.length) {
-        warnings.push(`Role '${role.id}' in team '${teamId}' has no output contract or deliverables.`);
-      }
-      if (!role.doneCriteria?.length) {
-        warnings.push(`Role '${role.id}' in team '${teamId}' has no parsed 'Done Criteria'.`);
-      }
     }
   }
 

@@ -114,7 +114,7 @@ If no active context exists, these commands can prompt with a picker in TUI mode
 
 ```text
 /workflow-status
-/resume
+/workflow-resume
 /task-status
 /agent-status
 /handoff-log
@@ -138,7 +138,7 @@ Recommended end-of-session capture:
 /session-signoff --status handoff --role planner --next architect
 ```
 
-`/resume` is the primary resume view. It shows the exact current role, active task packet, latest checkpoint, gate issues, and default read bundle.
+`/workflow-resume` is the primary resume view. It shows the exact current role, active task packet, latest checkpoint, gate issues, and default read bundle.
 `/workflow-status` is the broader operator view for the full lane.
 `/task-status` is the compact machine view of current task ownership and next-role routing.
 

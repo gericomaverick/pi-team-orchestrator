@@ -53,7 +53,7 @@ Set context:
 /team-load web-app
 /project-init my-project --bind-active-team
 /project-brief Initial brief for this project.
-/resume
+/workflow-resume
 /task-status
 ```
 
@@ -63,7 +63,7 @@ If project already exists:
 /project-switch my-project
 /project-bind-team web-app
 /project-migrate
-/resume
+/workflow-resume
 ```
 
 For an older project created before the file-backed workflow upgrade, run `/project-migrate` once after switching/binding. That seeds the new workflow packet and task registry from the old log where possible.
@@ -104,7 +104,7 @@ Checkpoint/handoff events are also written to a project-local file for cross-ses
 /task-status
 ```
 
-`/resume` is now the primary resume command. It points to the exact role, task packet, latest checkpoint, gate issues, and role-scoped read bundle. `/workflow-status` is the broader operator view.
+`/workflow-resume` is now the primary resume command. It points to the exact role, task packet, latest checkpoint, gate issues, and role-scoped read bundle. `/workflow-status` is the broader operator view.
 
 ---
 
@@ -137,7 +137,7 @@ The extension injects orchestration context at turn start so these prompts are i
 ## Command reference
 
 ### Primary daily commands
-- `/resume`
+- `/workflow-resume`
 - `/project-brief <summary>`
 - `/workflow-status`
 - `/task-status`
@@ -165,7 +165,7 @@ These are the commands you should need most of the time. The other workflow comm
 - `/project-status` (or `/project-status <project-id>`)
 
 ### Workflow visibility
-- `/resume`
+- `/workflow-resume`
 - `/workflow-status`
 - `/workflow-reseed`
 - `/workflow-mode [lean|delivery|recovery]`
@@ -239,7 +239,7 @@ The intended usage is:
 
 Efficiency rules:
 - Agents are prompted to read only the role-scoped relevant files by default.
-- `/resume` and the active task packet are the default restart surface, not broad project history.
+- `/workflow-resume` and the active task packet are the default restart surface, not broad project history.
 - Archived and superseded checkpoint packets are not part of the default read set.
 - The task registry is compact on purpose; it should stay operational, not narrative.
 - If a role is missing its required brief/checkpoint/task packet/ownership, gates stop it from advancing.

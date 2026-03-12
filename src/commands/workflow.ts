@@ -74,7 +74,7 @@ export function registerWorkflowCommands(pi: ExtensionAPI, deps: WorkflowCommand
     },
   });
 
-  pi.registerCommand("resume", {
+  pi.registerCommand("workflow-resume", {
     description: "Show the exact resumable task packet, read bundle, and gate state for the active workflow lane",
     handler: async (_args, ctx) => {
       const state = deps.getState();
