@@ -4,7 +4,7 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
-## [0.2.5] - 2026-03-12
+## [0.2.6] - 2026-03-12
 
 ### Added
 - New GitHub Actions workflow to create a GitHub Release automatically on `v*` tag pushes.
@@ -14,6 +14,12 @@ All notable changes to this project will be documented in this file.
 - GitHub npm publish workflow now runs on `v*` tag pushes, GitHub Release publish, and supports `NPM_TOKEN` fallback in addition to trusted publishing.
 - GitHub npm publish workflow now chooses trusted publishing vs `NPM_TOKEN` fallback inside the publish step, avoiding invalid `if:` conditions on secrets.
 - GitHub npm publish workflow now uses Node.js 24 so the bundled npm version is compatible with npm trusted publishing.
+- Package metadata now declares the public GitHub repository, and trusted publishing uses npm's default OIDC publish path.
+
+## [0.2.5] - 2026-03-12
+
+### Changed
+- Follow-up release to test trusted publishing with a current Node/npm toolchain.
 
 ## [0.2.4] - 2026-03-12
 
