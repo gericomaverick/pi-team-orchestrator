@@ -4,7 +4,7 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
-## [0.2.2] - 2026-03-12
+## [0.2.3] - 2026-03-12
 
 ### Added
 - New GitHub Actions workflow to create a GitHub Release automatically on `v*` tag pushes.
@@ -12,6 +12,12 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 - GitHub npm publish workflow now runs on `v*` tag pushes, GitHub Release publish, and supports `NPM_TOKEN` fallback in addition to trusted publishing.
+- GitHub npm publish workflow now chooses trusted publishing vs `NPM_TOKEN` fallback inside the publish step, avoiding invalid `if:` conditions on secrets.
+
+## [0.2.2] - 2026-03-12
+
+### Changed
+- Follow-up release to validate the corrected tag-triggered publish workflow and GitHub Release flow.
 
 ## [0.2.1] - 2026-03-12
 

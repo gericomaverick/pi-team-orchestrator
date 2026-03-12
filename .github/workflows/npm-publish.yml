@@ -53,12 +53,17 @@ jobs:
       - name: Package dry-run check
         run: npm run pack:check
 
-      - name: Publish to npm with trusted publishing
-        if: ${{ secrets.NPM_TOKEN == '' }}
-        run: npm publish --provenance --access public
-
-      - name: Publish to npm with NPM_TOKEN fallback
-        if: ${{ secrets.NPM_TOKEN != '' }}
+      - name: Publish to npm
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-        run: npm publish --access public
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -n "${NODE_AUTH_TOKEN:-}" ]]; then
+            echo "Publishing with NPM_TOKEN fallback"
+            npm publish --access public
+          else
+            echo "Publishing with trusted publishing"
+            unset NODE_AUTH_TOKEN
+            npm publish --provenance --access public
+          fi

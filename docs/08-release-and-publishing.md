@@ -14,7 +14,7 @@ Flow:
 1. Update `package.json` version.
 2. Update `CHANGELOG.md`.
 3. Push the release commit to `main`.
-4. Push a matching tag like `v0.2.2`.
+4. Push a matching tag like `v0.2.3`.
 5. GitHub creates a GitHub Release.
 6. The npm publish workflow runs from the tag push and publishes the package.
 
