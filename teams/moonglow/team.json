@@ -1,0 +1,26 @@
+{
+  "id": "moonglow",
+  "name": "Moonglow",
+  "description": "Project-specific team matching Moonglow's historical workflow roles and handoff paths.",
+  "roles": [
+    "scout",
+    "planner",
+    "combat-designer",
+    "systems-designer",
+    "world-atmosphere-designer",
+    "world-level-designer",
+    "technical-director",
+    "architect",
+    "multiplayer-persistence-engineer",
+    "mpe-coder",
+    "coder",
+    "build-engineer",
+    "reviewer",
+    "qa-balance-analyst",
+    "continuity-steward",
+    "documentor",
+    "release-manager",
+    "product-owner"
+  ],
+  "policyMode": "standard"
+}

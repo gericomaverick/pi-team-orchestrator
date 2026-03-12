@@ -4,6 +4,31 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-03-12
+
+### Added
+- Shared role library under `roles/` with team manifests under `teams/<team>/team.json`, plus backward-compatible fallback to legacy `teams/<team>/roles/*.md`.
+- File-backed workflow memory under `<project>/documents`, including:
+  - `canonical/project-brief.md`
+  - `canonical/decision-log.md`
+  - `canonical/workflow-status.md`
+  - `checkpoints/*.md`
+  - `supporting/active-blockers.md`
+  - `working/task-registry.json`
+  - `archive/`
+- New `/project-brief`, `/project-migrate`, `/workflow-status`, `/workflow-reseed`, and `/task-status` commands.
+- Moonglow-specific team manifest and shared role definitions for historical project recovery.
+- New workflow documentation in `docs/07-file-backed-workflow.md`.
+
+### Changed
+- Prompt injection now includes role-scoped relevant files, task registry path, and gate issues so agents read less by default.
+- Workflow resume now centers on the latest checkpoint packet and `workflow-status.md` instead of the append-only event log.
+- Handoffs, checkpoints, blockers, and decisions now update the file-backed workflow docs and task registry.
+- Older checkpoint packets for the same task are archived to keep the default read set small.
+- Role transitions are gated by required documents, non-placeholder brief state, task ownership, and checkpoint availability.
+- Footer/status UI now emphasizes compact project state, while the board renders previous/current/next agent cards horizontally.
+- Built-in web/game teams now use shared role manifests instead of duplicating role markdown.
+
 ## [0.1.4] - 2026-03-10
 
 ### Changed

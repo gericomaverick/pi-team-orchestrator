@@ -1,0 +1,16 @@
+{
+  "id": "web-app",
+  "name": "Web App",
+  "description": "Composable web application team built from the shared role library.",
+  "roles": [
+    "scout",
+    "planner",
+    "architect",
+    "coder",
+    "reviewer",
+    "continuity-steward",
+    "documentor",
+    "release-manager"
+  ],
+  "policyMode": "standard"
+}

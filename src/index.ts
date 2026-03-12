@@ -7,6 +7,7 @@ import { registerWorkflowCommands } from "./commands/workflow";
 import { restoreOrchestratorState, persistOrchestratorState } from "./state/persistence";
 import { DEFAULT_STATE, ensureRoleStatusesForTeam, setActiveTeam } from "./state/store";
 import { loadTeamsFromMarkdown } from "./state/team-loader";
+import { getRelevantDocumentPaths, hydrateProjectFromFiles } from "./state/workflow-files";
 import type { OrchestratorState, ProjectState, TeamConfig } from "./state/types";
 import { registerBlockerTool } from "./tools/blocker";
 import { registerCheckpointSignTool } from "./tools/checkpoint-sign";
@@ -86,6 +87,8 @@ function syncStateWithLoadedTeams() {
       ensureRoleStatusesForTeam(project, team);
     }
   }
+
+  hydrateProjectFromFiles(project);
 }
 
 function persistState(pi: ExtensionAPI) {
@@ -140,15 +143,16 @@ export default function register(pi: ExtensionAPI) {
 
   registerWorkflowCommands(pi, {
     getState,
+    getTeams,
     persistState: persist,
     updateIndicator: refreshIndicator,
   });
 
-  registerHandoffTool(pi, getState, persist, refreshIndicator);
-  registerRoleStatusTool(pi, getState, persist, refreshIndicator);
-  registerBlockerTool(pi, getState, persist, refreshIndicator);
-  registerDecisionLogTool(pi, getState, persist, refreshIndicator);
-  registerCheckpointSignTool(pi, getState, persist, refreshIndicator);
+  registerHandoffTool(pi, getState, getTeams, persist, refreshIndicator);
+  registerRoleStatusTool(pi, getState, getTeams, persist, refreshIndicator);
+  registerBlockerTool(pi, getState, getTeams, persist, refreshIndicator);
+  registerDecisionLogTool(pi, getState, getTeams, persist, refreshIndicator);
+  registerCheckpointSignTool(pi, getState, getTeams, persist, refreshIndicator);
 
   pi.on("before_agent_start", async (event) => {
     const orchestrationBlock = buildOrchestrationPromptBlock(state, teams);
@@ -199,19 +203,32 @@ export default function register(pi: ExtensionAPI) {
 function buildOrchestrationPromptBlock(state: OrchestratorState, teams: TeamConfig[]): string {
   const activeProject = state.activeProjectId ? state.projects[state.activeProjectId] : undefined;
   const activeTeam = resolveActiveTeam(state, teams, activeProject);
-  const activeRole = inferCurrentRole(activeProject);
+  const activeRole = activeProject?.workflow?.current?.roleId ?? inferCurrentRole(activeProject);
+  const nextRole = activeProject?.workflow?.next?.roleId;
+  const previousRole = activeProject?.workflow?.previous?.roleId;
+  const relevantPaths = activeProject ? getRelevantDocumentPaths(activeProject, activeRole ?? nextRole) : [];
+  const requiredDocs = activeTeam && (activeRole || nextRole)
+    ? activeTeam.requiredDocsByRole[activeRole ?? nextRole ?? ""] ?? []
+    : [];
+  const gateIssues = activeProject?.workflow?.gateIssues ?? [];
 
   const contextLines = [
     `- Active team: ${activeTeam?.id ?? "none"}`,
     `- Active project: ${activeProject?.name ?? "none"}`,
     `- Phase: ${activeProject?.currentPhase ?? activeTeam?.defaultPhase ?? "none"}`,
+    `- Previous role: ${previousRole ?? "none"}`,
     `- Current role: ${activeRole ?? "none"}`,
+    `- Next role: ${nextRole ?? "none"}`,
     `- Current task: ${activeProject?.currentTask?.title ?? "none"}`,
     `- Blockers: ${activeProject?.blockers.length ?? 0}`,
     `- Handoffs: ${activeProject?.handoffs.length ?? 0}`,
     `- Checkpoints: ${activeProject?.checkpoints.length ?? 0}`,
+    `- Task registry: ${activeProject?.workflow?.taskRegistryPath ?? "none"}`,
     `- Messenger mode: ${state.messengerMode === "allowed" ? "allowed" : "blocked"}`,
     `- Team board: ${state.teamBoardMode === "off" ? "off" : "on"}`,
+    `- Required doc ids for active role: ${requiredDocs.length ? requiredDocs.join(", ") : "none"}`,
+    `- Default relevant files: ${relevantPaths.length ? relevantPaths.join(", ") : "none"}`,
+    `- Gate issues: ${gateIssues.length ? gateIssues.join("; ") : "none"}`,
   ];
 
   return [
@@ -224,9 +241,12 @@ function buildOrchestrationPromptBlock(state: OrchestratorState, teams: TeamConf
     "- team_blocker",
     "- team_decision_log",
     "- team_checkpoint_sign",
+    "Read only the default relevant files unless the user explicitly asks for broader context.",
+    "Do not advance a role when gate issues are present; resolve the file/task gaps first.",
     "When completing a meaningful step, sign a checkpoint (team_checkpoint_sign), especially at handoffs.",
+    "Primary operator commands: /project-brief, /workflow-status, /task-status, /workflow-next, /session-signoff.",
     "Human-facing status commands:",
-    "- /team-status, /project-status, /agent-status, /handoff-log, /blockers, /decision-log, /checkpoint-log, /session-signoff, /team-board, /workflow-next",
+    "- /project-brief, /project-migrate, /workflow-status, /workflow-reseed, /task-status, /team-status, /project-status, /agent-status, /handoff-log, /blockers, /decision-log, /checkpoint-log, /session-signoff, /team-board, /workflow-next",
     "Do not call pi_messenger unless messenger mode is explicitly set to 'allowed'.",
     "Current orchestrator context:",
     ...contextLines,

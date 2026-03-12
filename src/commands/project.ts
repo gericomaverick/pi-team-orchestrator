@@ -1,6 +1,7 @@
 import type { ExtensionAPI, ExtensionCommandContext } from "@mariozechner/pi-coding-agent";
 import { bindTeamToProject, ensureProject, ensureRoleStatusesForTeam, setActiveProject, setActiveTeam } from "../state/store";
 import { ensureProjectDirectory, listProjectCandidates, resolveProjectPath, validateProjectId } from "../state/project-registry";
+import { ensureProjectWorkflowFiles, hydrateProjectFromFiles, migrateProjectWorkflow, writeProjectBrief } from "../state/workflow-files";
 import type { OrchestratorState, TeamConfig } from "../state/types";
 
 interface ProjectCommandDeps {
@@ -66,6 +67,7 @@ export function registerProjectCommands(pi: ExtensionAPI, deps: ProjectCommandDe
       const teams = deps.getTeams();
       const { cwd, created } = ensureProjectDirectory(projectId);
       const project = ensureProject(state, projectId, projectId, cwd);
+      ensureProjectWorkflowFiles(project);
       setActiveProject(state, projectId);
 
       if (parsed.bindActiveTeam) {
@@ -75,6 +77,7 @@ export function registerProjectCommands(pi: ExtensionAPI, deps: ProjectCommandDe
           setActiveTeam(state, activeTeam.id);
           project.currentPhase = project.currentPhase ?? activeTeam.defaultPhase;
           ensureRoleStatusesForTeam(project, activeTeam);
+          hydrateProjectFromFiles(project);
         }
       }
 
@@ -86,6 +89,7 @@ export function registerProjectCommands(pi: ExtensionAPI, deps: ProjectCommandDe
           ensureRoleStatusesForTeam(project, boundTeam);
         }
       }
+      hydrateProjectFromFiles(project);
 
       deps.persistState();
       deps.updateIndicator(ctx);
@@ -197,7 +201,7 @@ export function registerProjectCommands(pi: ExtensionAPI, deps: ProjectCommandDe
 
       const teams = deps.getTeams();
       if (!teams.length) {
-        printOutput(ctx, "No teams loaded. Check teams/<team>/roles/*.md files.");
+        printOutput(ctx, "No teams loaded. Check teams/<team>/team.json or teams/<team>/roles/*.md.");
         return;
       }
 
@@ -235,12 +239,69 @@ export function registerProjectCommands(pi: ExtensionAPI, deps: ProjectCommandDe
 
       project.currentPhase = project.currentPhase ?? team.defaultPhase;
       ensureRoleStatusesForTeam(project, team);
+      hydrateProjectFromFiles(project);
 
       deps.persistState();
       deps.updateIndicator(ctx);
 
       const reboundNote = previousTeamId && previousTeamId !== team.id ? ` (rebound from ${previousTeamId})` : "";
       printOutput(ctx, `Bound project ${state.activeProjectId} to team ${team.id}${reboundNote}`);
+    },
+  });
+
+  pi.registerCommand("project-brief", {
+    description: "Write or inspect the concise project brief file",
+    handler: async (args, ctx) => {
+      const state = deps.getState();
+      const project = state.activeProjectId ? state.projects[state.activeProjectId] : undefined;
+      if (!project) {
+        printOutput(ctx, "No active project");
+        return;
+      }
+
+      hydrateProjectFromFiles(project);
+
+      const summary = args.trim();
+      if (!summary) {
+        printOutput(ctx, `Project brief: ${project.workflow?.briefPath ?? "not initialized"}`);
+        return;
+      }
+
+      const briefPath = writeProjectBrief(project, summary, {
+        roleId: project.workflow?.current?.roleId ?? project.workflow?.next?.roleId,
+      });
+
+      deps.persistState();
+      deps.updateIndicator(ctx);
+      printOutput(ctx, `Updated project brief: ${briefPath ?? "unknown path"}`);
+    },
+  });
+
+  pi.registerCommand("project-migrate", {
+    description: "Initialize or reseed the file-backed workflow docs for the active project",
+    handler: async (_args, ctx) => {
+      const state = deps.getState();
+      const project = state.activeProjectId ? state.projects[state.activeProjectId] : undefined;
+      if (!project) {
+        printOutput(ctx, "No active project");
+        return;
+      }
+
+      hydrateProjectFromFiles(project);
+      const team = deps.getTeams().find((candidate) => candidate.id === project.boundTeamId);
+      const result = migrateProjectWorkflow(project, team);
+
+      deps.persistState();
+      deps.updateIndicator(ctx);
+
+      const lines = [
+        result.summary,
+        `Brief: ${result.briefPath ?? project.workflow?.briefPath ?? "none"}`,
+        `Task registry: ${result.taskRegistryPath ?? project.workflow?.taskRegistryPath ?? "none"}`,
+        `Checkpoint: ${result.checkpointPath ?? project.workflow?.latestCheckpointPath ?? "none"}`,
+        ...(result.warnings.length ? ["Warnings:", ...result.warnings.map((item) => `- ${item}`)] : []),
+      ];
+      printOutput(ctx, lines.join("\n"));
     },
   });
 
@@ -299,6 +360,8 @@ export function registerProjectCommands(pi: ExtensionAPI, deps: ProjectCommandDe
           `Milestone: ${project.milestone ?? "none"}`,
           `Phase: ${project.currentPhase ?? "none"}`,
           `Task: ${project.currentTask?.title ?? "none"}`,
+          `Brief: ${project.workflow?.briefPath ?? "none"}`,
+          `Latest checkpoint: ${project.workflow?.latestCheckpointPath ?? "none"}`,
           `Blockers: ${project.blockers.length}`,
           `Handoffs: ${project.handoffs.length}`,
           `Checkpoints: ${project.checkpoints.length}`,
@@ -356,6 +419,7 @@ function listKnownProjects(state: OrchestratorState): Array<{ id: string; name: 
 function activateProject(state: OrchestratorState, projectId: string, teams: TeamConfig[]) {
   const cwd = resolveProjectPath(projectId);
   const project = ensureProject(state, projectId, projectId, cwd);
+  ensureProjectWorkflowFiles(project);
   setActiveProject(state, projectId);
 
   if (project.boundTeamId) {
@@ -366,6 +430,8 @@ function activateProject(state: OrchestratorState, projectId: string, teams: Tea
       ensureRoleStatusesForTeam(project, boundTeam);
     }
   }
+
+  hydrateProjectFromFiles(project);
 
   return project;
 }

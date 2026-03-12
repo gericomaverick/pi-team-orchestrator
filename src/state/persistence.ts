@@ -65,7 +65,9 @@ function normalizeState(input: OrchestratorState): OrchestratorState {
         checkpoints: Array.isArray((project as { checkpoints?: unknown[] }).checkpoints)
           ? ((project as { checkpoints?: unknown[] }).checkpoints ?? [])
           : [],
+        tasks: project.tasks && typeof project.tasks === "object" ? project.tasks : {},
         roleStatuses: project.roleStatuses && typeof project.roleStatuses === "object" ? project.roleStatuses : {},
+        workflow: project.workflow && typeof project.workflow === "object" ? project.workflow : {},
       },
     ]),
   );

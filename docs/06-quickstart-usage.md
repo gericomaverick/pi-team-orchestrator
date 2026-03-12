@@ -2,6 +2,10 @@
 
 This guide covers the day-to-day flow: start Pi, choose a team, choose a project, bind them, and inspect status.
 
+Teams can be defined either as:
+- `teams/<team>/team.json` using shared roles from `roles/*.md`
+- or legacy `teams/<team>/roles/*.md`
+
 ## 1) Start Pi with the extension
 
 From this project root:
@@ -76,6 +80,18 @@ Or interactive picker:
 
 This also updates active team context and initializes role statuses.
 
+If this is a new project, seed the canonical brief early:
+
+```text
+/project-brief Initial brief for this project.
+```
+
+If this is an older project from before the file-backed workflow upgrade, reseed once:
+
+```text
+/project-migrate
+```
+
 ## 5) Check current status
 
 Current context:
@@ -97,6 +113,8 @@ If no active context exists, these commands can prompt with a picker in TUI mode
 ## 6) Workflow visibility commands
 
 ```text
+/workflow-status
+/task-status
 /agent-status
 /handoff-log
 /checkpoint-log
@@ -118,6 +136,9 @@ Recommended end-of-session capture:
 ```text
 /session-signoff --status handoff --role planner --next architect
 ```
+
+`/workflow-status` is the primary resume view. It shows previous/current/next role plus the default relevant files for the active workflow slot.
+`/task-status` is the compact machine view of current task ownership and next-role routing.
 
 ## 7) Instruct the team via normal chat (no messenger pane)
 
@@ -157,11 +178,13 @@ Switch back to default:
 ## Notes
 
 - Project candidates are discovered from `~/.pi/projects` plus any projects already seen in orchestrator state.
-- Team definitions are loaded from `teams/<team>/roles/*.md`.
+- Team definitions are loaded from `teams/<team>/team.json` plus shared `roles/*.md`, with legacy `teams/<team>/roles/*.md` still supported.
 - Handoff/checkpoint/blocker/decision events are appended to `<project>/.pi-orchestrator/checkpoints.md` for cross-session recovery.
-- Footer defaults to rich mode:
-  - `team:<id> | project:<id> | phase:<phase> | role:<id> | state:<state> | handoffs:<n> | blockers:<n> | checkpoints:<n> | messenger:<on|off> | active:<role:state,...>`
-  - `active:` rotates top non-idle roles (up to 2 shown) across updates.
+- Canonical workflow files are maintained under `<project>/documents`.
+- The compact task registry lives at `<project>/documents/working/task-registry.json`.
+- The primary resume packet is the latest checkpoint file under `<project>/documents/checkpoints/`.
+- Roles are gated by required files and current task ownership, so the orchestrator can refuse to advance a role when the file state is incomplete.
+- The workflow widget shows previous/current/next agent cards horizontally.
 - Switch footer mode anytime:
 
 ```text

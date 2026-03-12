@@ -1,7 +1,8 @@
 import { Type } from "@sinclair/typebox";
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { appendProjectLogLine, formatLogLine } from "../state/project-log";
-import type { OrchestratorState } from "../state/types";
+import { appendDecisionDoc, syncWorkflowFiles } from "../state/workflow-files";
+import type { OrchestratorState, TeamConfig } from "../state/types";
 
 const DecisionLogParams = Type.Object({
   title: Type.String(),
@@ -13,6 +14,7 @@ const DecisionLogParams = Type.Object({
 export function registerDecisionLogTool(
   pi: ExtensionAPI,
   getState: () => OrchestratorState,
+  getTeams: () => TeamConfig[],
   persistState: () => void,
   updateIndicator: (ctx: ExtensionContext) => void,
 ) {
@@ -47,6 +49,10 @@ export function registerDecisionLogTool(
           `${params.title}: ${params.decision}${params.rationale ? ` | why: ${params.rationale}` : ""}${params.impact ? ` | impact: ${params.impact}` : ""}`,
         ),
       );
+
+      appendDecisionDoc(project, project.decisions.at(-1)!);
+      const team = getTeams().find((candidate) => candidate.id === project.boundTeamId);
+      syncWorkflowFiles(project, team);
 
       persistState();
       updateIndicator(ctx);

@@ -20,7 +20,9 @@ export function ensureProject(state: OrchestratorState, projectId: string, name?
       decisions: [],
       handoffs: [],
       checkpoints: [],
+      tasks: {},
       roleStatuses: {},
+      workflow: {},
     };
   }
   const project = state.projects[projectId];
@@ -29,7 +31,9 @@ export function ensureProject(state: OrchestratorState, projectId: string, name?
   if (!Array.isArray(project.decisions)) project.decisions = [];
   if (!Array.isArray(project.handoffs)) project.handoffs = [];
   if (!Array.isArray(project.checkpoints)) project.checkpoints = [];
+  if (!project.tasks || typeof project.tasks !== "object") project.tasks = {};
   if (!project.roleStatuses || typeof project.roleStatuses !== "object") project.roleStatuses = {};
+  if (!project.workflow || typeof project.workflow !== "object") project.workflow = {};
 
   if (name) project.name = name;
   if (cwd) project.cwd = cwd;

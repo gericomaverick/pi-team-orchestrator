@@ -1,0 +1,22 @@
+{
+  "id": "game-dev",
+  "name": "Game Dev",
+  "description": "Composable game development team built from the shared role library.",
+  "roles": [
+    "scout",
+    "planner",
+    "combat-designer",
+    "systems-designer",
+    "world-atmosphere-designer",
+    "technical-director",
+    "architect",
+    "multiplayer-persistence-engineer",
+    "coder",
+    "reviewer",
+    "qa-balance-analyst",
+    "continuity-steward",
+    "documentor",
+    "release-manager"
+  ],
+  "policyMode": "standard"
+}

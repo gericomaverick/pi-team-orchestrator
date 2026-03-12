@@ -39,6 +39,12 @@ export interface TaskState {
   status: "idle" | "planned" | "working" | "review" | "blocked" | "done";
   assignedRoleId?: string;
   acceptanceCriteria?: string[];
+  summary?: string;
+  nextRoleId?: string;
+  checkpointPath?: string;
+  relevantPaths?: string[];
+  requiredDocIds?: string[];
+  updatedAt?: string;
 }
 
 export interface RoleStatus {
@@ -65,6 +71,47 @@ export interface CanonDoc {
   label: string;
   path: string;
   requiredForRoles?: string[];
+}
+
+export type DocumentKind = "canonical" | "checkpoint" | "supporting" | "working" | "archived";
+export type DocumentStatus = "active" | "superseded" | "archived";
+
+export interface ProjectDocumentEntry {
+  id: string;
+  title: string;
+  path: string;
+  kind: DocumentKind;
+  status: DocumentStatus;
+  roleIds?: string[];
+  taskId?: string;
+  summary?: string;
+  tags?: string[];
+  supersedes?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface WorkflowRoleSlot {
+  roleId?: string;
+  status?: string;
+  taskId?: string;
+  summary?: string;
+  path?: string;
+  updatedAt?: string;
+}
+
+export interface WorkflowSnapshot {
+  previous?: WorkflowRoleSlot;
+  current?: WorkflowRoleSlot;
+  next?: WorkflowRoleSlot;
+  briefPath?: string;
+  decisionLogPath?: string;
+  blockersPath?: string;
+  latestCheckpointPath?: string;
+  taskRegistryPath?: string;
+  relevantPaths?: string[];
+  gateIssues?: string[];
+  updatedAt?: string;
 }
 
 export interface DecisionLogEntry {
@@ -109,7 +156,9 @@ export interface ProjectState {
   decisions: DecisionLogEntry[];
   handoffs: HandoffEvent[];
   checkpoints: CheckpointEntry[];
+  tasks?: Record<string, TaskState>;
   roleStatuses: Record<string, RoleStatus>;
+  workflow?: WorkflowSnapshot;
 }
 
 export type FooterMode = "compact" | "rich";

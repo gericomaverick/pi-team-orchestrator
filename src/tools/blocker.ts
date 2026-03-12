@@ -2,7 +2,8 @@ import { StringEnum } from "@mariozechner/pi-ai";
 import { Type } from "@sinclair/typebox";
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { appendProjectLogLine, formatLogLine } from "../state/project-log";
-import type { OrchestratorState } from "../state/types";
+import { syncBlockersDoc, syncWorkflowFiles, upsertTaskRecord } from "../state/workflow-files";
+import type { OrchestratorState, TeamConfig } from "../state/types";
 
 const BlockerParams = Type.Object({
   severity: StringEnum(["low", "medium", "high"] as const),
@@ -15,6 +16,7 @@ const BlockerParams = Type.Object({
 export function registerBlockerTool(
   pi: ExtensionAPI,
   getState: () => OrchestratorState,
+  getTeams: () => TeamConfig[],
   persistState: () => void,
   updateIndicator: (ctx: ExtensionContext) => void,
 ) {
@@ -41,6 +43,31 @@ export function registerBlockerTool(
         nextAction: params.nextAction,
       });
 
+      project.workflow = {
+        ...(project.workflow ?? {}),
+        current: {
+          ...(project.workflow?.current ?? {}),
+          status: "blocked",
+          taskId: params.taskId ?? project.workflow?.current?.taskId,
+          summary: params.summary,
+          updatedAt: timestamp,
+        },
+        updatedAt: timestamp,
+      };
+      if (params.taskId || project.currentTask) {
+        const taskId = params.taskId ?? project.currentTask?.id ?? "current-scope";
+        upsertTaskRecord(project, {
+          id: taskId,
+          title: project.currentTask?.title ?? taskId,
+          status: "blocked",
+          assignedRoleId: params.roleId ?? project.workflow?.current?.roleId,
+          summary: params.summary,
+          nextRoleId: project.workflow?.next?.roleId,
+          checkpointPath: project.workflow?.latestCheckpointPath,
+          updatedAt: timestamp,
+        });
+      }
+
       appendProjectLogLine(
         project.cwd,
         formatLogLine(
@@ -49,6 +76,10 @@ export function registerBlockerTool(
           `severity=${params.severity}${params.roleId ? ` role=${params.roleId}` : ""}${params.taskId ? ` task=${params.taskId}` : ""} | ${params.summary}${params.nextAction ? ` | next: ${params.nextAction}` : ""}`,
         ),
       );
+
+      const team = getTeams().find((candidate) => candidate.id === project.boundTeamId);
+      syncBlockersDoc(project);
+      syncWorkflowFiles(project, team);
 
       persistState();
       updateIndicator(ctx);

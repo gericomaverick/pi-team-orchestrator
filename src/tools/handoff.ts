@@ -1,7 +1,8 @@
 import { Type } from "@sinclair/typebox";
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { appendProjectLogLine, formatLogLine } from "../state/project-log";
-import type { OrchestratorState } from "../state/types";
+import { canRoleTransition, syncWorkflowFiles, upsertTaskRecord, writeCheckpointPacket } from "../state/workflow-files";
+import type { OrchestratorState, TeamConfig } from "../state/types";
 
 const HandoffParams = Type.Object({
   fromRoleId: Type.String(),
@@ -15,6 +16,7 @@ const HandoffParams = Type.Object({
 export function registerHandoffTool(
   pi: ExtensionAPI,
   getState: () => OrchestratorState,
+  getTeams: () => TeamConfig[],
   persistState: () => void,
   updateIndicator: (ctx: ExtensionContext) => void,
 ) {
@@ -28,6 +30,18 @@ export function registerHandoffTool(
       const project = state.activeProjectId ? state.projects[state.activeProjectId] : undefined;
       if (!project) {
         return { content: [{ type: "text", text: "No active project" }] };
+      }
+      const team = getTeams().find((candidate) => candidate.id === project.boundTeamId);
+      const transition = canRoleTransition(project, team, params.fromRoleId, params.taskId);
+      if (transition.blocked) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Blocked handoff ${params.fromRoleId} -> ${params.toRoleId}: ${transition.issues.join(" | ")}`,
+            },
+          ],
+        };
       }
 
       const timestamp = new Date().toISOString();
@@ -55,6 +69,64 @@ export function registerHandoffTool(
         evidence: params.deliverables,
       });
 
+      project.currentTask = {
+        id: params.taskId,
+        title: params.taskId,
+        status: "planned",
+        assignedRoleId: params.toRoleId,
+      };
+
+      if (project.roleStatuses[params.fromRoleId]) {
+        project.roleStatuses[params.fromRoleId].state = "done";
+        project.roleStatuses[params.fromRoleId].taskId = params.taskId;
+        project.roleStatuses[params.fromRoleId].summary = params.summary;
+        project.roleStatuses[params.fromRoleId].updatedAt = timestamp;
+      }
+
+      project.roleStatuses[params.toRoleId] = {
+        roleId: params.toRoleId,
+        state: "queued",
+        taskId: params.taskId,
+        summary: params.summary,
+        updatedAt: timestamp,
+      };
+
+      project.workflow = {
+        ...(project.workflow ?? {}),
+        previous: {
+          roleId: params.fromRoleId,
+          status: "handoff",
+          taskId: params.taskId,
+          summary: params.summary,
+          updatedAt: timestamp,
+        },
+        current: {
+          roleId: params.toRoleId,
+          status: "queued",
+          taskId: params.taskId,
+          summary: params.summary,
+          updatedAt: timestamp,
+        },
+        next: {
+          roleId: undefined,
+          status: "queued",
+          taskId: params.taskId,
+          updatedAt: timestamp,
+        },
+        updatedAt: timestamp,
+      };
+      upsertTaskRecord(project, {
+        id: params.taskId,
+        title: params.taskId,
+        status: "planned",
+        assignedRoleId: params.toRoleId,
+        summary: params.summary,
+        nextRoleId: params.toRoleId,
+        checkpointPath: project.workflow.latestCheckpointPath,
+        relevantPaths: params.deliverables,
+        updatedAt: timestamp,
+      });
+
       appendProjectLogLine(
         project.cwd,
         formatLogLine(
@@ -65,6 +137,14 @@ export function registerHandoffTool(
           }`,
         ),
       );
+
+      writeCheckpointPacket(project, project.checkpoints.at(-1)!, {
+        fromRoleId: params.fromRoleId,
+        blockers: project.blockers,
+        evidence: params.deliverables,
+        team,
+      });
+      syncWorkflowFiles(project, team);
 
       persistState();
       updateIndicator(ctx);
