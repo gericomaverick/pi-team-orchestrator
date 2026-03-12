@@ -353,9 +353,9 @@ Recommended GitHub release flow:
 
 1. Bump `package.json` version and update `CHANGELOG.md`.
 2. Push the commit.
-3. Push a matching tag such as `v0.2.1`.
+3. Push a matching tag such as `v0.2.2`.
 4. GitHub Actions creates the GitHub Release.
-5. The publish workflow then publishes to npm from GitHub.
+5. The npm publish workflow also runs from that tag push and publishes from GitHub.
 
 Local dry run:
 
@@ -378,12 +378,12 @@ NPM_OTP=123456 npm run release
 Install from npm:
 
 ```bash
-pi install npm:@gericomaverick/pi-team-orchestrator@0.2.1
+pi install npm:@gericomaverick/pi-team-orchestrator@0.2.2
 ```
 
 GitHub workflows:
 - [`.github/workflows/github-release.yml`](.github/workflows/github-release.yml): creates a GitHub Release on `v*` tag push
-- [`.github/workflows/npm-publish.yml`](.github/workflows/npm-publish.yml): publishes to npm on GitHub Release publish, or manual dispatch
+- [`.github/workflows/npm-publish.yml`](.github/workflows/npm-publish.yml): publishes to npm on `v*` tag push, GitHub Release publish, or manual dispatch
 
 npm package setting:
 - If you want GitHub trusted publishing with an emergency token fallback, choose `Require two-factor authentication or a granular access token with bypass 2fa enabled`.
