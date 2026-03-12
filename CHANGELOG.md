@@ -4,6 +4,21 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.2.7] - 2026-03-12
+
+### Added
+- New strict workflow runtime features:
+  - `/resume` command as the primary restart surface
+  - active task packets under `documents/working/tasks/`
+  - shared `engineering-manager` role for Moonglow workflow continuity
+
+### Changed
+- Role markdown parsing now reads role-body contracts such as inputs, output contract, and done criteria.
+- Workflow runtime now tracks one active task lane with task packet path, resume summary, stale document state, and workflow mode.
+- Handoffs and checkpoints now require stronger file-backed state, including task packet continuity and evidence-linked resume packets.
+- Default read bundles are now mode-aware (`lean`, `delivery`, `recovery`) and exclude stale/superseded docs by default.
+- Prompt injection, status surfaces, and operator docs now center on `/resume`, task packets, and strict file-backed continuity.
+
 ## [0.2.6] - 2026-03-12
 
 ### Added
