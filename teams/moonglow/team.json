@@ -20,7 +20,8 @@
     "continuity-steward",
     "documentor",
     "release-manager",
-    "product-owner"
+    "product-owner",
+    "engineering-manager"
   ],
   "policyMode": "standard"
 }

@@ -114,6 +114,7 @@ If no active context exists, these commands can prompt with a picker in TUI mode
 
 ```text
 /workflow-status
+/resume
 /task-status
 /agent-status
 /handoff-log
@@ -137,7 +138,8 @@ Recommended end-of-session capture:
 /session-signoff --status handoff --role planner --next architect
 ```
 
-`/workflow-status` is the primary resume view. It shows previous/current/next role plus the default relevant files for the active workflow slot.
+`/resume` is the primary resume view. It shows the exact current role, active task packet, latest checkpoint, gate issues, and default read bundle.
+`/workflow-status` is the broader operator view for the full lane.
 `/task-status` is the compact machine view of current task ownership and next-role routing.
 
 ## 7) Instruct the team via normal chat (no messenger pane)
@@ -181,9 +183,10 @@ Switch back to default:
 - Team definitions are loaded from `teams/<team>/team.json` plus shared `roles/*.md`, with legacy `teams/<team>/roles/*.md` still supported.
 - Handoff/checkpoint/blocker/decision events are appended to `<project>/.pi-orchestrator/checkpoints.md` for cross-session recovery.
 - Canonical workflow files are maintained under `<project>/documents`.
+- The live task packet lives at `<project>/documents/working/tasks/<task-id>.md`.
 - The compact task registry lives at `<project>/documents/working/task-registry.json`.
 - The primary resume packet is the latest checkpoint file under `<project>/documents/checkpoints/`.
-- Roles are gated by required files and current task ownership, so the orchestrator can refuse to advance a role when the file state is incomplete.
+- Roles are gated by required files, task packet, evidence, and current task ownership, so the orchestrator can refuse to advance a role when the file state is incomplete.
 - The workflow widget shows previous/current/next agent cards horizontally.
 - Switch footer mode anytime:
 

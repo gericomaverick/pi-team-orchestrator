@@ -37,6 +37,12 @@ export function renderTeamBoard(state: OrchestratorState, activeTeam?: TeamConfi
   if (project.workflow?.latestCheckpointPath) {
     lines.push(`checkpoint: ${project.workflow.latestCheckpointPath}`);
   }
+  if (project.workflow?.activeTaskId) {
+    lines.push(`task: ${project.workflow.activeTaskId}`);
+  }
+  if (project.workflow?.gateIssues?.length) {
+    lines.push(`gates: ${project.workflow.gateIssues.join(" | ")}`);
+  }
 
   return lines;
 }

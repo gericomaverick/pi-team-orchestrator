@@ -3,7 +3,7 @@ import { Type } from "@sinclair/typebox";
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { buildCheckpointSummary, inferCurrentRoleId } from "../state/checkpoint-summary";
 import { appendProjectLogLine, formatLogLine } from "../state/project-log";
-import { canRoleTransition, syncWorkflowFiles, upsertTaskRecord, writeCheckpointPacket } from "../state/workflow-files";
+import { canCheckpointTransition, syncWorkflowFiles, upsertTaskRecord, writeCheckpointPacket } from "../state/workflow-files";
 import type { CheckpointEntry, OrchestratorState, TeamConfig } from "../state/types";
 
 const CheckpointSignParams = Type.Object({
@@ -38,7 +38,7 @@ export function registerCheckpointSignTool(
       const status = params.status ?? "done";
       const roleId = params.roleId ?? inferCurrentRoleId(project) ?? "orchestrator";
       const team = getTeams().find((candidate) => candidate.id === project.boundTeamId);
-      const transition = canRoleTransition(project, team, roleId, params.taskId);
+      const transition = canCheckpointTransition(project, team, roleId, params.taskId, params.nextRoleId, params.evidence);
       if ((status === "in_progress" || status === "handoff" || status === "done") && transition.blocked) {
         return {
           content: [
@@ -75,14 +75,17 @@ export function registerCheckpointSignTool(
         project.currentTask = {
           id: taskId,
           title: project.currentTask?.title ?? taskId,
-          status: entry.status === "blocked" ? "blocked" : entry.status === "handoff" ? "done" : entry.status === "done" ? "done" : "working",
+          status: entry.status === "blocked" ? "blocked" : entry.status === "handoff" ? "planned" : entry.status === "done" ? "done" : "working",
           assignedRoleId: entry.nextRoleId ?? entry.roleId,
+          summary: entry.summary,
+          evidence: entry.evidence,
         };
         upsertTaskRecord(project, {
           ...project.currentTask,
           summary: entry.summary,
           nextRoleId: entry.nextRoleId,
           checkpointPath: project.workflow?.latestCheckpointPath,
+          evidence: entry.evidence,
           updatedAt: timestamp,
         });
       }

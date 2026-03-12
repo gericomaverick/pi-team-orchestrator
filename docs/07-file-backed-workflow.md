@@ -25,6 +25,8 @@ This extension now treats the project filesystem as the primary workflow memory.
     supporting/
       active-blockers.md
     working/
+      tasks/
+        <task-id>.md
       task-registry.json
     archive/
   .pi-orchestrator/
@@ -45,6 +47,8 @@ This extension now treats the project filesystem as the primary workflow memory.
   The resumable handoff or progress packet for a specific task transition.
 - `documents/supporting/active-blockers.md`
   Current blockers and next actions.
+- `documents/working/tasks/<task-id>.md`
+  The one active task packet: owner, read bundle, expected outputs, evidence, and next action.
 - `documents/working/task-registry.json`
   The compact task registry for ownership, status, next role, and checkpoint path.
 - `.pi-orchestrator/checkpoints.md`
@@ -55,8 +59,10 @@ This extension now treats the project filesystem as the primary workflow memory.
 - Canonical files stay short and durable.
 - Working files stay structured and compact.
 - Checkpoint packets carry the exact resumable handoff.
+- Task packets carry the exact live execution slice.
 - Older checkpoint packets are archived so they stop polluting the default read set.
 - Roles are prompted to read only the relevant file subset for their slot and task.
+- Workflow mode caps the default read budget (`lean`, `delivery`, `recovery`).
 
 ## Role gates
 
@@ -66,8 +72,10 @@ Before a role can advance meaningful work, the orchestrator checks for:
 - required canonical files for that role
 - a non-placeholder project brief
 - an active checkpoint packet for non-scout roles
+- an active task packet
 - a task record in `task-registry.json`
 - task ownership matching the current or next role
+- evidence references for done/handoff checkpoints
 
 If those conditions are missing, the role is gated and the extension surfaces the exact issues in `/workflow-status`.
 
@@ -79,7 +87,7 @@ For a new project:
 /team-load <team>
 /project-init <project> --bind-active-team
 /project-brief <concise overview>
-/workflow-status
+/resume
 ```
 
 For an existing project:
@@ -88,7 +96,7 @@ For an existing project:
 /project-switch <project>
 /team-load <team>
 /project-bind-team <team>
-/workflow-status
+/resume
 ```
 
 For an older pre-upgrade project:
@@ -98,7 +106,7 @@ For an older pre-upgrade project:
 /team-load <team>
 /project-bind-team <team>
 /project-migrate
-/workflow-status
+/resume
 ```
 
 At the end of a work chunk:
@@ -111,8 +119,10 @@ At the end of a work chunk:
 
 Use this as the normal command set:
 
+- `/resume`
 - `/project-brief`
 - `/workflow-status`
+- `/workflow-mode`
 - `/task-status`
 - `/workflow-next`
 - `/session-signoff`

@@ -11,6 +11,7 @@ const DEFAULT_REQUIRED_DOCS: Record<string, string[]> = {
   coder: ["project-brief", "decision-log", "workflow-status"],
   "mpe-coder": ["project-brief", "decision-log", "workflow-status", "active-blockers"],
   "build-engineer": ["project-brief", "workflow-status", "active-blockers"],
+  "engineering-manager": ["project-brief", "decision-log", "workflow-status", "active-blockers", "task-registry"],
   reviewer: ["project-brief", "decision-log", "workflow-status", "active-blockers"],
   "continuity-steward": ["project-brief", "decision-log", "workflow-status", "active-blockers"],
   documentor: ["project-brief", "decision-log", "workflow-status"],
@@ -114,10 +115,32 @@ export function loadTeamsFromMarkdown(teamsRoot: string): TeamLoadResult {
       defaultPhase,
       handoffRules,
       requiredDocsByRole: Object.fromEntries(
-        roles.map((role) => [role.id, DEFAULT_REQUIRED_DOCS[role.id] ?? ["project-brief", "workflow-status"]]),
+        roles.map((role) => [
+          role.id,
+          role.alwaysReadDocIds?.length
+            ? role.alwaysReadDocIds
+            : DEFAULT_REQUIRED_DOCS[role.id] ?? ["project-brief", "workflow-status"],
+        ]),
       ),
       policyMode: manifest?.policyMode ?? "standard",
     });
+
+    const seenRoleIds = new Set<string>();
+    for (const role of roles) {
+      if (seenRoleIds.has(role.id)) {
+        warnings.push(`Team '${teamId}' contains duplicate role '${role.id}'.`);
+      }
+      seenRoleIds.add(role.id);
+      if (!role.inputsRequired?.length) {
+        warnings.push(`Role '${role.id}' in team '${teamId}' has no parsed 'Inputs Required' contract.`);
+      }
+      if (!role.outputContract?.length && !role.deliverables?.length) {
+        warnings.push(`Role '${role.id}' in team '${teamId}' has no output contract or deliverables.`);
+      }
+      if (!role.doneCriteria?.length) {
+        warnings.push(`Role '${role.id}' in team '${teamId}' has no parsed 'Done Criteria'.`);
+      }
+    }
   }
 
   teams.sort((a, b) => a.id.localeCompare(b.id));

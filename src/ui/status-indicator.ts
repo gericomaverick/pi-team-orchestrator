@@ -11,15 +11,23 @@ export function updateStatusIndicator(ctx: ExtensionContext, state: Orchestrator
   const mode = state.footerMode === "compact" ? "compact" : "rich";
 
   if (mode === "compact") {
-    const status = [`team:${activeTeam?.id ?? "none"}`, `project:${project?.name ?? "none"}`, `phase:${phase}`].join(" | ");
+    const status = [
+      `team:${activeTeam?.id ?? "none"}`,
+      `project:${project?.name ?? "none"}`,
+      `phase:${phase}`,
+      `task:${project?.workflow?.activeTaskId ?? "none"}`,
+    ].join(" | ");
     ctx.ui.setStatus("team-orchestrator", status);
   } else {
     const richStatus = [
       `team:${activeTeam?.id ?? "none"}`,
       `project:${project?.name ?? "none"}`,
       `phase:${phase}`,
+      `mode:${project?.workflow?.mode ?? "lean"}`,
+      `task:${project?.workflow?.activeTaskId ?? "none"}`,
       `brief:${project?.workflow?.briefPath ? "set" : "missing"}`,
       `checkpoint:${project?.workflow?.latestCheckpointPath ? "set" : "none"}`,
+      `gates:${project?.workflow?.gateIssues?.length ?? 0}`,
       `blockers:${project?.blockers.length ?? 0}`,
     ].join(" | ");
 

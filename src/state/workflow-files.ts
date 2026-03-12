@@ -6,10 +6,12 @@ import type {
   CanonDoc,
   CheckpointEntry,
   DecisionLogEntry,
+  DocumentKind,
   ProjectDocumentEntry,
   ProjectState,
   TaskState,
   TeamConfig,
+  WorkflowMode,
   WorkflowSnapshot,
 } from "./types";
 
@@ -23,6 +25,7 @@ interface WorkflowDocumentIndex {
 interface TaskRegistry {
   version: 1;
   updatedAt: string;
+  activeTaskId?: string;
   tasks: TaskState[];
 }
 
@@ -34,6 +37,7 @@ const CANONICAL_DIR = "canonical";
 const CHECKPOINTS_DIR = "checkpoints";
 const SUPPORTING_DIR = "supporting";
 const WORKING_DIR = "working";
+const TASKS_DIR = "tasks";
 const ARCHIVE_DIR = "archive";
 
 const PROJECT_BRIEF_ID = "project-brief";
@@ -61,9 +65,30 @@ const ROLE_DEFAULT_DOCS: Record<string, string[]> = {
   "build-engineer": [PROJECT_BRIEF_ID, WORKFLOW_STATUS_ID, ACTIVE_BLOCKERS_ID, TASK_REGISTRY_ID],
   "mpe-coder": [PROJECT_BRIEF_ID, DECISION_LOG_ID, WORKFLOW_STATUS_ID, ACTIVE_BLOCKERS_ID, TASK_REGISTRY_ID],
   "product-owner": [PROJECT_BRIEF_ID, DECISION_LOG_ID, WORKFLOW_STATUS_ID, ACTIVE_BLOCKERS_ID, TASK_REGISTRY_ID],
+  "engineering-manager": [PROJECT_BRIEF_ID, DECISION_LOG_ID, WORKFLOW_STATUS_ID, ACTIVE_BLOCKERS_ID, TASK_REGISTRY_ID],
 };
 
 const BRIEF_PLACEHOLDER = "Capture the initial brief, current scope, and constraints here.";
+const READ_BUDGET_BY_MODE: Record<WorkflowMode, number> = {
+  lean: 6,
+  delivery: 9,
+  recovery: 12,
+};
+const OPTIONAL_KINDS_BY_MODE: Record<WorkflowMode, DocumentKind[]> = {
+  lean: ["canonical", "checkpoint"],
+  delivery: ["canonical", "checkpoint", "supporting"],
+  recovery: ["canonical", "checkpoint", "supporting", "working"],
+};
+const DEFAULT_ALLOWED_WRITE_KINDS: Record<string, DocumentKind[]> = {
+  scout: ["canonical", "working"],
+  planner: ["canonical", "working"],
+  architect: ["canonical", "working"],
+  coder: ["working"],
+  reviewer: ["checkpoint", "supporting", "working"],
+  "release-manager": ["checkpoint", "canonical", "supporting"],
+  "product-owner": ["canonical", "checkpoint"],
+  "technical-director": ["canonical", "working", "checkpoint"],
+};
 
 export function ensureProjectWorkflowFiles(project: ProjectState): WorkflowDocumentIndex | undefined {
   if (!project.cwd) return undefined;
@@ -74,9 +99,10 @@ export function ensureProjectWorkflowFiles(project: ProjectState): WorkflowDocum
   const checkpointsRoot = path.join(documentsRoot, CHECKPOINTS_DIR);
   const supportingRoot = path.join(documentsRoot, SUPPORTING_DIR);
   const workingRoot = path.join(documentsRoot, WORKING_DIR);
+  const tasksRoot = path.join(workingRoot, TASKS_DIR);
   const archiveRoot = path.join(documentsRoot, ARCHIVE_DIR);
 
-  for (const dir of [documentsRoot, canonicalRoot, checkpointsRoot, supportingRoot, workingRoot, archiveRoot]) {
+  for (const dir of [documentsRoot, canonicalRoot, checkpointsRoot, supportingRoot, workingRoot, tasksRoot, archiveRoot]) {
     fs.mkdirSync(dir, { recursive: true });
   }
 
@@ -85,6 +111,11 @@ export function ensureProjectWorkflowFiles(project: ProjectState): WorkflowDocum
     updatedAt: now,
     documents: [],
     workflow: project.workflow ? { ...project.workflow, updatedAt: project.workflow.updatedAt ?? now } : { updatedAt: now },
+  };
+  index.workflow = {
+    ...index.workflow,
+    mode: index.workflow?.mode ?? "lean",
+    updatedAt: index.workflow?.updatedAt ?? now,
   };
 
   const projectBriefPath = path.join(canonicalRoot, "project-brief.md");
@@ -211,33 +242,49 @@ export function syncWorkflowFiles(project: ProjectState, team?: TeamConfig) {
   if (!index || !project.cwd) return;
 
   const currentRoleId = project.workflow?.current?.roleId ?? project.workflow?.next?.roleId;
+  const currentRole = currentRoleId ? team?.roles.find((role) => role.id === currentRoleId) : undefined;
   if (currentRoleId && team) {
     project.currentPhase = team.roles.find((role) => role.id === currentRoleId)?.phase ?? project.currentPhase;
   }
 
   if (project.currentTask) {
+    const packetPath = ensureTaskPacket(project, project.currentTask, team);
     upsertTaskRecord(project, {
       id: project.currentTask.id,
       title: project.currentTask.title,
+      description: project.currentTask.description,
       status: project.currentTask.status,
       assignedRoleId: project.currentTask.assignedRoleId,
       summary: project.workflow?.current?.summary ?? project.currentTask.summary,
       nextRoleId: project.workflow?.next?.roleId,
       checkpointPath: project.workflow?.latestCheckpointPath,
-      relevantPaths: getRelevantDocumentPaths(project, currentRoleId, project.currentTask.id),
-      requiredDocIds: currentRoleId && team ? team.requiredDocsByRole[currentRoleId] ?? [PROJECT_BRIEF_ID, WORKFLOW_STATUS_ID] : undefined,
+      packetPath,
+      relevantPaths: getRelevantDocumentPaths(project, currentRoleId, project.currentTask.id, team),
+      readPacketPaths: compactStrings([packetPath, project.workflow?.latestCheckpointPath]),
+      requiredDocIds:
+        currentRoleId && team ? team.requiredDocsByRole[currentRoleId] ?? [PROJECT_BRIEF_ID, WORKFLOW_STATUS_ID] : undefined,
+      expectedOutputs: currentRole?.deliverables ?? currentRole?.outputContract,
+      evidence: project.currentTask.evidence,
       updatedAt: new Date().toISOString(),
     });
   }
 
-  const relevantPaths = getRelevantDocumentPaths(project, currentRoleId, project.currentTask?.id);
+  const activeTaskId = project.currentTask?.id ?? project.workflow?.current?.taskId ?? project.workflow?.next?.taskId;
+  const activeTask = activeTaskId ? project.tasks?.[activeTaskId] ?? project.currentTask : project.currentTask;
+  const relevantPaths = getRelevantDocumentPaths(project, currentRoleId, activeTaskId, team);
   const predictedNextRoleId =
     project.workflow?.next?.roleId ??
     predictNextRoleId(team, project.workflow?.current?.roleId ?? project.currentTask?.assignedRoleId);
-  const gateIssues = currentRoleId ? getRoleGateIssues(project, team, currentRoleId, project.currentTask?.id) : [];
+  const gateIssues = currentRoleId ? getRoleGateIssues(project, team, currentRoleId, activeTaskId) : getWorkflowGateIssues(project, team);
+  const staleDocIds = detectStaleDocumentIds(index, activeTaskId);
+  const activeTaskPath = activeTask?.packetPath ?? (activeTask ? getTaskPacketPath(project.cwd, activeTask.id) : undefined);
+  const resumeSummary = buildResumeSummary(project, activeTask, currentRoleId, predictedNextRoleId, gateIssues);
 
   project.workflow = {
     ...(project.workflow ?? {}),
+    mode: project.workflow?.mode ?? index.workflow?.mode ?? "lean",
+    activeTaskId,
+    activeTaskPath,
     briefPath: project.workflow?.briefPath ?? findDocument(index, PROJECT_BRIEF_ID)?.path,
     decisionLogPath: project.workflow?.decisionLogPath ?? findDocument(index, DECISION_LOG_ID)?.path,
     blockersPath: project.workflow?.blockersPath ?? findDocument(index, ACTIVE_BLOCKERS_ID)?.path,
@@ -253,6 +300,8 @@ export function syncWorkflowFiles(project: ProjectState, team?: TeamConfig) {
         : project.workflow?.next,
     relevantPaths,
     gateIssues,
+    staleDocIds,
+    resumeSummary,
     updatedAt: new Date().toISOString(),
   };
 
@@ -425,8 +474,10 @@ export function writeCheckpointPacket(
   const packetPath = path.join(getDocumentsRoot(project.cwd), CHECKPOINTS_DIR, fileName);
   const blockers = options?.blockers ?? project.blockers;
   const evidence = options?.evidence ?? checkpoint.evidence ?? [];
+  const currentRole = options?.team?.roles.find((role) => role.id === checkpoint.roleId);
   const nextRoleId = checkpoint.nextRoleId ?? predictNextRoleId(options?.team, checkpoint.roleId) ?? project.workflow?.next?.roleId;
   const taskLabel = checkpoint.taskId ?? project.currentTask?.title ?? "none";
+  const supersededEntry = latestCheckpointForTask(index, checkpoint.taskId);
 
   archiveSupersededCheckpointDocuments(index, project.cwd, checkpoint.taskId, checkpoint.id);
 
@@ -452,6 +503,9 @@ export function writeCheckpointPacket(
       "## Evidence",
       ...(evidence.length ? evidence.map((item) => `- ${item}`) : ["- None"]),
       "",
+      "## Output Contract",
+      ...(currentRole?.outputContract?.length ? currentRole.outputContract.map((item) => `- ${item}`) : ["- None"]),
+      "",
     ].join("\n"),
     "utf8",
   );
@@ -466,6 +520,7 @@ export function writeCheckpointPacket(
     taskId: checkpoint.taskId,
     summary: checkpoint.summary,
     tags: [checkpoint.status],
+    supersedes: supersededEntry?.id,
     createdAt: checkpoint.timestamp,
     updatedAt: checkpoint.timestamp,
   });
@@ -483,7 +538,7 @@ export function writeCheckpointPacket(
     current: nextRoleId
       ? {
           roleId: nextRoleId,
-          status: checkpoint.status === "handoff" ? "queued" : "blocked",
+          status: checkpoint.status === "blocked" ? "blocked" : "queued",
           taskId: checkpoint.taskId,
           summary: checkpoint.summary,
           path: packetPath,
@@ -512,6 +567,22 @@ export function writeCheckpointPacket(
   if (checkpoint.taskId || project.currentTask) {
     const taskId = checkpoint.taskId ?? project.currentTask?.id ?? "current-scope";
     const title = project.currentTask?.title ?? taskId;
+    const taskPacketPath = ensureTaskPacket(
+      project,
+      {
+        id: taskId,
+        title,
+        description: project.currentTask?.description,
+        status: normalizeTaskStatus(checkpoint.status),
+        assignedRoleId: nextRoleId ?? checkpoint.roleId,
+        summary: checkpoint.summary,
+        nextRoleId,
+        checkpointPath: packetPath,
+        evidence,
+        updatedAt: checkpoint.timestamp,
+      },
+      options?.team,
+    );
     upsertTaskRecord(project, {
       id: taskId,
       title,
@@ -520,7 +591,17 @@ export function writeCheckpointPacket(
       summary: checkpoint.summary,
       nextRoleId,
       checkpointPath: packetPath,
-      relevantPaths: compactStrings([packetPath, project.workflow?.briefPath, project.workflow?.decisionLogPath, project.workflow?.blockersPath]),
+      packetPath: taskPacketPath,
+      relevantPaths: compactStrings([
+        packetPath,
+        taskPacketPath,
+        project.workflow?.briefPath,
+        project.workflow?.decisionLogPath,
+        project.workflow?.blockersPath,
+      ]),
+      readPacketPaths: compactStrings([taskPacketPath, packetPath]),
+      expectedOutputs: currentRole?.deliverables ?? currentRole?.outputContract,
+      evidence,
       updatedAt: checkpoint.timestamp,
     });
   }
@@ -554,29 +635,53 @@ export function upsertTaskRecord(project: ProjectState, task: TaskState): string
   }
 
   registry.updatedAt = updatedAt;
+  if (incoming.status !== "done" && incoming.status !== "idle") {
+    registry.activeTaskId = incoming.id;
+  } else if (registry.activeTaskId === incoming.id) {
+    registry.activeTaskId = undefined;
+  }
   saveTaskRegistry(project.cwd, registry);
   project.tasks = Object.fromEntries(registry.tasks.map((entry) => [entry.id, entry]));
+  if (registry.activeTaskId && project.tasks[registry.activeTaskId]) {
+    project.currentTask = project.tasks[registry.activeTaskId];
+  }
   return getTaskRegistryPath(project.cwd);
 }
 
-export function getRelevantDocumentPaths(project: ProjectState, roleId?: string, taskId?: string): string[] {
+export function getRelevantDocumentPaths(
+  project: ProjectState,
+  roleId?: string,
+  taskId?: string,
+  team?: TeamConfig,
+): string[] {
   const index = loadWorkflowDocumentIndex(project.cwd);
   if (!index) return [];
-  return selectRelevantDocumentPaths(index, roleId ?? project.workflow?.current?.roleId ?? project.workflow?.next?.roleId, taskId ?? project.currentTask?.id);
+  return selectRelevantDocumentPaths(
+    index,
+    roleId ?? project.workflow?.current?.roleId ?? project.workflow?.next?.roleId,
+    taskId ?? project.currentTask?.id,
+    team,
+  );
 }
 
 export function getRoleGateIssues(project: ProjectState, team: TeamConfig | undefined, roleId: string, taskId?: string): string[] {
-  if (!team) return ["No bound team for active project."];
+  const issues = getWorkflowGateIssues(project, team);
+  if (!team) return issues.length ? issues : ["No bound team for active project."];
 
-  const issues: string[] = [];
+  const role = team.roles.find((candidate) => candidate.id === roleId);
   const requiredDocIds = team.requiredDocsByRole[roleId] ?? [PROJECT_BRIEF_ID, WORKFLOW_STATUS_ID];
   const index = loadWorkflowDocumentIndex(project.cwd);
   const registry = loadTaskRegistry(project.cwd);
   const effectiveTaskId = taskId ?? project.currentTask?.id ?? project.workflow?.current?.taskId ?? project.workflow?.next?.taskId;
 
+  if (!role) {
+    issues.push(`Role '${roleId}' is not defined in team '${team.id}'.`);
+    return dedupeIssues(issues);
+  }
+
   if (!index) {
     issues.push("Workflow document index is missing.");
-    return issues;
+    return dedupeIssues(issues);
   }
 
   for (const docId of requiredDocIds) {
@@ -585,6 +690,7 @@ export function getRoleGateIssues(project: ProjectState, team: TeamConfig | unde
       issues.push(`Missing required document '${docId}'.`);
       continue;
     }
+    if (doc.stale) issues.push(`Required document '${docId}' is stale.`);
     if (docId === PROJECT_BRIEF_ID && isPlaceholderBrief(doc.path)) {
       issues.push("Project brief is still a placeholder.");
     }
@@ -598,8 +704,13 @@ export function getRoleGateIssues(project: ProjectState, team: TeamConfig | unde
     const task = registry?.tasks.find((entry) => entry.id === effectiveTaskId);
     if (!task) {
       issues.push(`Task '${effectiveTaskId}' is not present in the task registry.`);
-    } else if (task.assignedRoleId && task.assignedRoleId !== roleId && task.nextRoleId !== roleId) {
-      issues.push(`Task '${effectiveTaskId}' is assigned to '${task.assignedRoleId}', not '${roleId}'.`);
+    } else {
+      if (task.assignedRoleId && task.assignedRoleId !== roleId && task.nextRoleId !== roleId) {
+        issues.push(`Task '${effectiveTaskId}' is assigned to '${task.assignedRoleId}', not '${roleId}'.`);
+      }
+      if (!task.packetPath || !fs.existsSync(task.packetPath)) {
+        issues.push(`Task '${effectiveTaskId}' does not have a task packet.`);
+      }
     }
   } else if (roleId !== "scout" && roleId !== "product-owner") {
     issues.push("No active task is assigned.");
@@ -609,7 +720,7 @@ export function getRoleGateIssues(project: ProjectState, team: TeamConfig | unde
     issues.push("No active checkpoint packet is available for resume.");
   }
 
-  return issues;
+  return dedupeIssues(issues);
 }
 
 export function canRoleTransition(project: ProjectState, team: TeamConfig | undefined, roleId: string, taskId?: string) {
@@ -621,9 +732,50 @@ export function canRoleTransition(project: ProjectState, team: TeamConfig | unde
   };
 }
 
+export function canCheckpointTransition(
+  project: ProjectState,
+  team: TeamConfig | undefined,
+  roleId: string,
+  taskId: string | undefined,
+  nextRoleId: string | undefined,
+  evidence: string[] | undefined,
+) {
+  const issues = getCheckpointGateIssues(project, team, roleId, taskId, nextRoleId, evidence);
+  const mode = team?.policyMode ?? "standard";
+  return {
+    issues,
+    blocked: mode !== "loose" && issues.length > 0,
+  };
+}
+
+export function canHandoffTransition(
+  project: ProjectState,
+  team: TeamConfig | undefined,
+  fromRoleId: string,
+  toRoleId: string,
+  taskId: string,
+  deliverables: string[],
+) {
+  const issues = getHandoffGateIssues(project, team, fromRoleId, toRoleId, taskId, deliverables);
+  const mode = team?.policyMode ?? "standard";
+  return {
+    issues,
+    blocked: mode !== "loose" && issues.length > 0,
+  };
+}
+
 export function predictNextRoleId(team: TeamConfig | undefined, roleId: string | undefined): string | undefined {
   if (!team || !roleId) return undefined;
   return team.handoffRules.find((rule) => rule.from === roleId)?.to;
+}
+
+export function setWorkflowMode(project: ProjectState, mode: WorkflowMode, team?: TeamConfig) {
+  project.workflow = {
+    ...(project.workflow ?? {}),
+    mode,
+    updatedAt: new Date().toISOString(),
+  };
+  syncWorkflowFiles(project, team);
 }
 
 export function migrateProjectWorkflow(
@@ -695,8 +847,13 @@ function writeWorkflowStatusDoc(project: ProjectState, index: WorkflowDocumentIn
   const current = index.workflow?.current;
   const previous = index.workflow?.previous;
   const next = index.workflow?.next;
-  const relevantPaths = selectRelevantDocumentPaths(index, current?.roleId ?? next?.roleId, current?.taskId ?? next?.taskId);
+  const relevantPaths = selectRelevantDocumentPaths(
+    index,
+    current?.roleId ?? next?.roleId,
+    current?.taskId ?? next?.taskId,
+  );
   const gateIssues = index.workflow?.gateIssues ?? [];
+  const staleDocIds = index.workflow?.staleDocIds ?? [];
 
   fs.writeFileSync(
     statusPath,
@@ -717,9 +874,18 @@ function writeWorkflowStatusDoc(project: ProjectState, index: WorkflowDocumentIn
       formatWorkflowRole(next),
       "",
       `Task Registry: ${index.workflow?.taskRegistryPath ?? "none"}`,
+      `Active Task: ${index.workflow?.activeTaskId ?? "none"}`,
+      `Task Packet: ${index.workflow?.activeTaskPath ?? "none"}`,
+      `Mode: ${index.workflow?.mode ?? "lean"}`,
       "",
       "## Gate Issues",
       ...(gateIssues.length ? gateIssues.map((item) => `- ${item}`) : ["- None"]),
+      "",
+      "## Stale Documents",
+      ...(staleDocIds.length ? staleDocIds.map((item) => `- ${item}`) : ["- None"]),
+      "",
+      "## Resume Summary",
+      index.workflow?.resumeSummary ?? "No resume summary available.",
       "",
       "## Relevant Files",
       ...(relevantPaths.length ? relevantPaths.map((item) => `- ${item}`) : ["- None"]),
@@ -757,7 +923,7 @@ function applyIndexToProject(project: ProjectState, index: WorkflowDocumentIndex
   const registry = loadTaskRegistry(project.cwd);
   project.tasks = Object.fromEntries((registry?.tasks ?? []).map((entry) => [entry.id, entry]));
 
-  const currentTaskId = project.workflow?.current?.taskId ?? project.workflow?.next?.taskId;
+  const currentTaskId = registry?.activeTaskId ?? project.workflow?.activeTaskId ?? project.workflow?.current?.taskId ?? project.workflow?.next?.taskId;
   if (currentTaskId && project.tasks[currentTaskId]) {
     project.currentTask = project.tasks[currentTaskId];
   } else if (project.workflow?.current?.taskId) {
@@ -767,23 +933,41 @@ function applyIndexToProject(project: ProjectState, index: WorkflowDocumentIndex
       status: normalizeTaskStatus(project.workflow.current.status),
       assignedRoleId: project.workflow.current.roleId,
       summary: project.workflow.current.summary,
+      packetPath: project.workflow.activeTaskPath,
       updatedAt: project.workflow.current.updatedAt,
     };
   }
 }
 
-function selectRelevantDocumentPaths(index: WorkflowDocumentIndex, roleId?: string, taskId?: string): string[] {
-  const entries = index.documents.filter((entry) => entry.status === "active" && entry.kind !== "archived");
+function selectRelevantDocumentPaths(
+  index: WorkflowDocumentIndex,
+  roleId?: string,
+  taskId?: string,
+  team?: TeamConfig,
+): string[] {
+  const entries = index.documents.filter((entry) => entry.status === "active" && entry.kind !== "archived" && !entry.stale);
   const seen = new Set<string>();
   const ordered: string[] = [];
+  const mode = index.workflow?.mode ?? "lean";
+  const budget = READ_BUDGET_BY_MODE[mode];
+  const optionalKinds = OPTIONAL_KINDS_BY_MODE[mode];
+  const role = roleId ? team?.roles.find((candidate) => candidate.id === roleId) : undefined;
   const add = (entry: ProjectDocumentEntry | undefined) => {
-    if (!entry || seen.has(entry.path)) return;
+    if (!entry || seen.has(entry.path) || ordered.length >= budget) return;
     seen.add(entry.path);
     ordered.push(entry.path);
   };
 
-  const defaults = roleId ? ROLE_DEFAULT_DOCS[roleId] ?? [PROJECT_BRIEF_ID, WORKFLOW_STATUS_ID] : [PROJECT_BRIEF_ID, WORKFLOW_STATUS_ID];
+  const defaults = role?.alwaysReadDocIds?.length
+    ? role.alwaysReadDocIds
+    : roleId
+      ? ROLE_DEFAULT_DOCS[roleId] ?? [PROJECT_BRIEF_ID, WORKFLOW_STATUS_ID]
+      : [PROJECT_BRIEF_ID, WORKFLOW_STATUS_ID];
   for (const id of defaults) add(findDocument(index, id));
+
+  if (index.workflow?.activeTaskPath) {
+    add(entries.find((entry) => entry.path === index.workflow?.activeTaskPath));
+  }
 
   if (taskId) {
     for (const entry of entries.filter((item) => item.taskId === taskId)) add(entry);
@@ -794,11 +978,12 @@ function selectRelevantDocumentPaths(index: WorkflowDocumentIndex, roleId?: stri
   }
 
   for (const entry of entries) {
+    if (!optionalKinds.includes(entry.kind)) continue;
     if (entry.kind === "checkpoint") continue;
     if (!roleId || !entry.roleIds?.length || entry.roleIds.includes(roleId)) add(entry);
   }
 
-  return ordered.slice(0, 8);
+  return ordered.slice(0, budget);
 }
 
 function saveWorkflowDocumentIndex(projectCwd: string, index: WorkflowDocumentIndex) {
@@ -836,6 +1021,8 @@ function archiveSupersededCheckpointDocuments(index: WorkflowDocumentIndex, proj
       entry.path = nextPath;
     }
     entry.status = "archived";
+    entry.supersededBy = latestId;
+    entry.stale = true;
     entry.updatedAt = new Date().toISOString();
   }
 }
@@ -931,6 +1118,195 @@ function extractFirstUsefulParagraph(content: string): string | undefined {
   return paragraphs[0]?.slice(0, 600);
 }
 
+function ensureTaskPacket(project: ProjectState, task: TaskState, team?: TeamConfig): string | undefined {
+  if (!project.cwd) return undefined;
+
+  const index = loadWorkflowDocumentIndex(project.cwd) ?? ensureProjectWorkflowFiles(project);
+  if (!index) return undefined;
+
+  const packetPath = getTaskPacketPath(project.cwd, task.id);
+  const role = task.assignedRoleId ? team?.roles.find((candidate) => candidate.id === task.assignedRoleId) : undefined;
+  const now = task.updatedAt ?? new Date().toISOString();
+  const readBundle = compactStrings(
+    task.readPacketPaths?.length
+      ? task.readPacketPaths
+      : getRelevantDocumentPaths(project, task.assignedRoleId ?? project.workflow?.current?.roleId, task.id, team),
+  );
+  const evidence = task.evidence ?? [];
+  const expectedOutputs = task.expectedOutputs ?? role?.deliverables ?? role?.outputContract ?? [];
+  const requiredDocs = task.requiredDocIds ?? (task.assignedRoleId && team ? team.requiredDocsByRole[task.assignedRoleId] ?? [] : []);
+  const allowedWriteKinds = role?.allowedWriteKinds?.length
+    ? role.allowedWriteKinds
+    : DEFAULT_ALLOWED_WRITE_KINDS[task.assignedRoleId ?? ""] ?? ["working"];
+
+  fs.mkdirSync(path.dirname(packetPath), { recursive: true });
+  fs.writeFileSync(
+    packetPath,
+    [
+      `# Task Packet: ${task.title}`,
+      "",
+      `- Task: ${task.id}`,
+      `- Status: ${task.status}`,
+      `- Owner: ${task.assignedRoleId ?? "unassigned"}`,
+      `- Next: ${task.nextRoleId ?? "none"}`,
+      `- Updated: ${now}`,
+      `- Checkpoint: ${task.checkpointPath ?? project.workflow?.latestCheckpointPath ?? "none"}`,
+      "",
+      "## Summary",
+      task.summary ?? "No summary recorded.",
+      "",
+      "## Required Docs",
+      ...(requiredDocs.length ? requiredDocs.map((item) => `- ${item}`) : ["- None"]),
+      "",
+      "## Read Bundle",
+      ...(readBundle?.length ? readBundle.map((item) => `- ${item}`) : ["- None"]),
+      "",
+      "## Expected Outputs",
+      ...(expectedOutputs.length ? expectedOutputs.map((item) => `- ${item}`) : ["- None"]),
+      "",
+      "## Evidence",
+      ...(evidence.length ? evidence.map((item) => `- ${item}`) : ["- None"]),
+      "",
+      "## Allowed Write Zones",
+      ...allowedWriteKinds.map((item) => `- ${item}`),
+      "",
+      "## Next Action",
+      task.summary ?? "Update the task packet before handing off.",
+      "",
+    ].join("\n"),
+    "utf8",
+  );
+
+  upsertDocument(index, {
+    id: taskPacketId(task.id),
+    title: `Task Packet ${task.id}`,
+    path: packetPath,
+    kind: "working",
+    status: task.status === "done" ? "superseded" : "active",
+    roleIds: compactRoleIds([task.assignedRoleId, task.nextRoleId]),
+    taskId: task.id,
+    summary: task.summary ?? `Task packet for ${task.id}`,
+    tags: compactStrings(["task", task.status]),
+    createdAt: now,
+    updatedAt: now,
+  });
+
+  index.updatedAt = now;
+  saveWorkflowDocumentIndex(project.cwd, index);
+  task.packetPath = packetPath;
+  return packetPath;
+}
+
+function getTaskPacketPath(projectCwd: string, taskId: string) {
+  return path.join(getDocumentsRoot(projectCwd), WORKING_DIR, TASKS_DIR, `${sanitizeFileToken(taskId)}.md`);
+}
+
+function taskPacketId(taskId: string) {
+  return `task-${taskId}`;
+}
+
+function sanitizeFileToken(value: string) {
+  return value.replace(/[^a-zA-Z0-9_.-]/g, "-");
+}
+
+function latestCheckpointForTask(index: WorkflowDocumentIndex, taskId: string | undefined) {
+  return index.documents
+    .filter((entry) => entry.kind === "checkpoint" && entry.status === "active" && entry.taskId === taskId)
+    .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))[0];
+}
+
+function detectStaleDocumentIds(index: WorkflowDocumentIndex, taskId: string | undefined): string[] {
+  return index.documents
+    .filter((entry) => Boolean(entry.stale) || (taskId && entry.taskId === taskId && entry.status !== "active"))
+    .map((entry) => entry.id);
+}
+
+function getWorkflowGateIssues(project: ProjectState, team: TeamConfig | undefined): string[] {
+  const issues: string[] = [];
+  const currentRoleId = project.workflow?.current?.roleId;
+  const nextRoleId = project.workflow?.next?.roleId;
+  const activeTaskId = project.currentTask?.id ?? project.workflow?.activeTaskId ?? project.workflow?.current?.taskId;
+  const openTasks = Object.values(project.tasks ?? {}).filter((task) => !["done", "idle"].includes(task.status));
+
+  if (!project.cwd) issues.push("Project path is missing.");
+  if (!team) issues.push("No bound team for active project.");
+  if (currentRoleId && team && !team.roles.some((role) => role.id === currentRoleId)) {
+    issues.push(`Current role '${currentRoleId}' is not present in team '${team.id}'.`);
+  }
+  if (nextRoleId && team && !team.roles.some((role) => role.id === nextRoleId)) {
+    issues.push(`Next role '${nextRoleId}' is not present in team '${team.id}'.`);
+  }
+  if (!activeTaskId && currentRoleId && !["scout", "product-owner"].includes(currentRoleId)) {
+    issues.push("Workflow has no active task.");
+  }
+  if ((project.workflow?.mode ?? "lean") !== "recovery" && openTasks.length > 1) {
+    issues.push(`Multiple active tasks detected (${openTasks.length}); strict lane mode expects one.`);
+  }
+  return issues;
+}
+
+function getCheckpointGateIssues(
+  project: ProjectState,
+  team: TeamConfig | undefined,
+  roleId: string,
+  taskId: string | undefined,
+  nextRoleId: string | undefined,
+  evidence: string[] | undefined,
+): string[] {
+  const issues = getRoleGateIssues(project, team, roleId, taskId);
+  const role = team?.roles.find((candidate) => candidate.id === roleId);
+
+  if (nextRoleId && team && !team.roles.some((candidate) => candidate.id === nextRoleId)) {
+    issues.push(`Next role '${nextRoleId}' is not defined in team '${team.id}'.`);
+  }
+  if (nextRoleId && team && !isValidHandoff(team, roleId, nextRoleId)) {
+    issues.push(`Role '${roleId}' cannot hand off to '${nextRoleId}'.`);
+  }
+  if ((role?.deliverables?.length || role?.outputContract?.length) && !evidence?.length) {
+    issues.push(`Checkpoint for '${roleId}' is missing evidence/output references.`);
+  }
+  return dedupeIssues(issues);
+}
+
+function getHandoffGateIssues(
+  project: ProjectState,
+  team: TeamConfig | undefined,
+  fromRoleId: string,
+  toRoleId: string,
+  taskId: string,
+  deliverables: string[],
+): string[] {
+  const issues = getCheckpointGateIssues(project, team, fromRoleId, taskId, toRoleId, deliverables);
+  if (!deliverables.length) {
+    issues.push("Handoff requires at least one deliverable or evidence path.");
+  }
+  return dedupeIssues(issues);
+}
+
+function isValidHandoff(team: TeamConfig, fromRoleId: string, toRoleId: string) {
+  return team.handoffRules.some((rule) => rule.from === fromRoleId && rule.to === toRoleId);
+}
+
+function buildResumeSummary(
+  project: ProjectState,
+  task: TaskState | undefined,
+  currentRoleId: string | undefined,
+  nextRoleId: string | undefined,
+  gateIssues: string[],
+) {
+  if (gateIssues.length) {
+    return `Workflow gated for ${currentRoleId ?? "unknown"}: ${gateIssues.join(" | ")}`;
+  }
+  if (!task) {
+    return `No active task. Resume with ${currentRoleId ?? "the current role"} and define the next executable task.`;
+  }
+  return `${currentRoleId ?? "No current role"} owns ${task.id}${nextRoleId ? `; next role ${nextRoleId}` : ""}. Continue from ${task.packetPath ?? project.workflow?.latestCheckpointPath ?? "the latest workflow files"}.`;
+}
+
+function dedupeIssues(issues: string[]) {
+  return Array.from(new Set(issues.filter(Boolean)));
+}
+
 function upsertDocument(index: WorkflowDocumentIndex, incoming: ProjectDocumentEntry) {
   const existing = index.documents.find((entry) => entry.id === incoming.id);
   if (existing) {
@@ -943,6 +1319,8 @@ function upsertDocument(index: WorkflowDocumentIndex, incoming: ProjectDocumentE
     existing.summary = incoming.summary;
     existing.tags = incoming.tags;
     existing.supersedes = incoming.supersedes;
+    existing.supersededBy = incoming.supersededBy;
+    existing.stale = incoming.stale;
     existing.updatedAt = incoming.updatedAt;
     if (!existing.createdAt) existing.createdAt = incoming.createdAt;
     return;
@@ -993,8 +1371,9 @@ function normalizeTaskStatus(status: string | undefined): TaskState["status"] {
       return "review";
     case "blocked":
       return "blocked";
-    case "done":
     case "handoff":
+      return "planned";
+    case "done":
       return "done";
     default:
       return "planned";

@@ -8,8 +8,10 @@ It supports:
 - Session-backed orchestration state (team/project/phase/handoffs/blockers/decisions)
 - Structured coordination tools (status, handoff, blocker, decision events)
 - File-backed workflow docs under `<project>/documents`
+- One active task packet per workflow lane under `<project>/documents/working/tasks/`
 - Compact on-disk task registry under `<project>/documents/working/task-registry.json`
-- Role gates so agents only advance when the brief, checkpoint packet, and task assignment are in place
+- Strict role gates so agents only advance when the brief, checkpoint packet, task packet, and ownership are in place
+- Workflow modes (`lean`, `delivery`, `recovery`) to cap default read bundles
 - Live workflow/status indicators
 
 ---
@@ -51,7 +53,7 @@ Set context:
 /team-load web-app
 /project-init my-project --bind-active-team
 /project-brief Initial brief for this project.
-/workflow-status
+/resume
 /task-status
 ```
 
@@ -61,7 +63,7 @@ If project already exists:
 /project-switch my-project
 /project-bind-team web-app
 /project-migrate
-/workflow-status
+/resume
 ```
 
 For an older project created before the file-backed workflow upgrade, run `/project-migrate` once after switching/binding. That seeds the new workflow packet and task registry from the old log where possible.
@@ -102,7 +104,7 @@ Checkpoint/handoff events are also written to a project-local file for cross-ses
 /task-status
 ```
 
-`/workflow-status` is now the primary resume command. It points to the exact workflow packet, task registry, gate issues, and role-scoped relevant files.
+`/resume` is now the primary resume command. It points to the exact role, task packet, latest checkpoint, gate issues, and role-scoped read bundle. `/workflow-status` is the broader operator view.
 
 ---
 
@@ -135,9 +137,11 @@ The extension injects orchestration context at turn start so these prompts are i
 ## Command reference
 
 ### Primary daily commands
+- `/resume`
 - `/project-brief <summary>`
 - `/workflow-status`
 - `/task-status`
+- `/workflow-mode [lean|delivery|recovery]`
 - `/workflow-next`
 - `/session-signoff [--role ... --status ... --next ... --task ... --summary ...]`
 
@@ -161,8 +165,10 @@ These are the commands you should need most of the time. The other workflow comm
 - `/project-status` (or `/project-status <project-id>`)
 
 ### Workflow visibility
+- `/resume`
 - `/workflow-status`
 - `/workflow-reseed`
+- `/workflow-mode [lean|delivery|recovery]`
 - `/task-status`
 - `/agent-status`
 - `/handoff-log`
@@ -214,6 +220,8 @@ Every bound project gets a small workflow filesystem:
     supporting/
       active-blockers.md
     working/
+      tasks/
+        <task-id>.md
       task-registry.json
     archive/
   .pi-orchestrator/
@@ -222,17 +230,20 @@ Every bound project gets a small workflow filesystem:
 
 The intended usage is:
 - `project-brief.md`: concise canonical overview of the project
-- `workflow-status.md`: previous/current/next workflow lane plus gate issues and relevant files
+- `workflow-status.md`: previous/current/next workflow lane plus active task, gates, stale docs, and read bundle
 - checkpoint packet: the latest resumable handoff packet for the active task
+- task packet: the live working packet for the one active task lane
 - `task-registry.json`: compact machine-readable task ownership and next-step state
 - `decision-log.md`: concise approved decisions only
 - `checkpoints.md`: compatibility audit log, not the main resume surface
 
 Efficiency rules:
 - Agents are prompted to read only the role-scoped relevant files by default.
+- `/resume` and the active task packet are the default restart surface, not broad project history.
 - Archived and superseded checkpoint packets are not part of the default read set.
 - The task registry is compact on purpose; it should stay operational, not narrative.
-- If a role is missing its required brief/checkpoint/task assignment, gates stop it from advancing.
+- If a role is missing its required brief/checkpoint/task packet/ownership, gates stop it from advancing.
+- Handoffs and done checkpoints require evidence references, not just narrative text.
 
 ---
 

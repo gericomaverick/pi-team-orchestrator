@@ -1,4 +1,7 @@
 export type PolicyMode = "loose" | "standard" | "strict";
+export type WorkflowMode = "lean" | "delivery" | "recovery";
+export type DocumentKind = "canonical" | "checkpoint" | "supporting" | "working" | "archived";
+export type DocumentStatus = "active" | "superseded" | "archived";
 
 export type RoleState =
   | "idle"
@@ -18,6 +21,15 @@ export interface RoleConfig {
   thinking?: string;
   handoffTo?: string | string[];
   deliverables?: string[];
+  mission?: string;
+  inputsRequired?: string[];
+  outputContract?: string[];
+  doneCriteria?: string[];
+  prompt?: string;
+  sourcePath?: string;
+  alwaysReadDocIds?: string[];
+  optionalReadKinds?: DocumentKind[];
+  allowedWriteKinds?: DocumentKind[];
 }
 
 export interface TeamConfig {
@@ -42,8 +54,12 @@ export interface TaskState {
   summary?: string;
   nextRoleId?: string;
   checkpointPath?: string;
+  packetPath?: string;
   relevantPaths?: string[];
+  readPacketPaths?: string[];
   requiredDocIds?: string[];
+  expectedOutputs?: string[];
+  evidence?: string[];
   updatedAt?: string;
 }
 
@@ -73,9 +89,6 @@ export interface CanonDoc {
   requiredForRoles?: string[];
 }
 
-export type DocumentKind = "canonical" | "checkpoint" | "supporting" | "working" | "archived";
-export type DocumentStatus = "active" | "superseded" | "archived";
-
 export interface ProjectDocumentEntry {
   id: string;
   title: string;
@@ -87,6 +100,8 @@ export interface ProjectDocumentEntry {
   summary?: string;
   tags?: string[];
   supersedes?: string;
+  supersededBy?: string;
+  stale?: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -101,9 +116,12 @@ export interface WorkflowRoleSlot {
 }
 
 export interface WorkflowSnapshot {
+  mode?: WorkflowMode;
   previous?: WorkflowRoleSlot;
   current?: WorkflowRoleSlot;
   next?: WorkflowRoleSlot;
+  activeTaskId?: string;
+  activeTaskPath?: string;
   briefPath?: string;
   decisionLogPath?: string;
   blockersPath?: string;
@@ -111,6 +129,8 @@ export interface WorkflowSnapshot {
   taskRegistryPath?: string;
   relevantPaths?: string[];
   gateIssues?: string[];
+  staleDocIds?: string[];
+  resumeSummary?: string;
   updatedAt?: string;
 }
 

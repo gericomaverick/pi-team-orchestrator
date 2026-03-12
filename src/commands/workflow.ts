@@ -2,15 +2,16 @@ import type { ExtensionAPI, ExtensionCommandContext } from "@mariozechner/pi-cod
 import { buildCheckpointSummary, inferCurrentRoleId } from "../state/checkpoint-summary";
 import { appendProjectLogLine, formatLogLine, readLatestRoleHint, readProjectLogTail } from "../state/project-log";
 import {
-  canRoleTransition,
+  canCheckpointTransition,
   getRelevantDocumentPaths,
   hydrateProjectFromFiles,
   migrateProjectWorkflow,
   predictNextRoleId,
+  setWorkflowMode,
   syncWorkflowFiles,
   writeCheckpointPacket,
 } from "../state/workflow-files";
-import type { CheckpointEntry, OrchestratorState, TeamConfig } from "../state/types";
+import type { CheckpointEntry, OrchestratorState, TeamConfig, WorkflowMode } from "../state/types";
 
 interface WorkflowCommandDeps {
   getState: () => OrchestratorState;
@@ -37,20 +38,32 @@ export function registerWorkflowCommands(pi: ExtensionAPI, deps: WorkflowCommand
       const previous = formatWorkflowSlot(project.workflow?.previous);
       const current = formatWorkflowSlot(project.workflow?.current);
       const next = formatWorkflowSlot(project.workflow?.next);
-      const relevantPaths = getRelevantDocumentPaths(project, project.workflow?.current?.roleId ?? project.workflow?.next?.roleId);
+      const relevantPaths = getRelevantDocumentPaths(
+        project,
+        project.workflow?.current?.roleId ?? project.workflow?.next?.roleId,
+        project.workflow?.activeTaskId,
+        team,
+      );
 
       const lines = [
         `Project: ${project.name}`,
         `Phase: ${project.currentPhase ?? team?.defaultPhase ?? "none"}`,
+        `Mode: ${project.workflow?.mode ?? "lean"}`,
         `Previous: ${previous}`,
         `Current: ${current}`,
         `Next: ${next}`,
+        `Active task: ${project.workflow?.activeTaskId ?? "none"}`,
+        `Task packet: ${project.workflow?.activeTaskPath ?? "none"}`,
         `Task registry: ${project.workflow?.taskRegistryPath ?? "none"}`,
         `Brief: ${project.workflow?.briefPath ?? "none"}`,
         `Latest checkpoint: ${project.workflow?.latestCheckpointPath ?? "none"}`,
         `Open blockers: ${project.blockers.length}`,
         "Gate issues:",
         ...(project.workflow?.gateIssues?.length ? project.workflow.gateIssues.map((item) => `- ${item}`) : ["- none"]),
+        "Stale docs:",
+        ...(project.workflow?.staleDocIds?.length ? project.workflow.staleDocIds.map((item) => `- ${item}`) : ["- none"]),
+        "Resume summary:",
+        project.workflow?.resumeSummary ?? "- none",
         "Relevant files:",
         ...(relevantPaths.length ? relevantPaths.map((item) => `- ${item}`) : ["- none"]),
       ];
@@ -58,6 +71,68 @@ export function registerWorkflowCommands(pi: ExtensionAPI, deps: WorkflowCommand
       deps.persistState();
       deps.updateIndicator(ctx);
       printOutput(ctx, lines.join("\n"));
+    },
+  });
+
+  pi.registerCommand("resume", {
+    description: "Show the exact resumable task packet, read bundle, and gate state for the active workflow lane",
+    handler: async (_args, ctx) => {
+      const state = deps.getState();
+      const project = getActiveProject(state);
+      if (!project) {
+        printOutput(ctx, "No active project");
+        return;
+      }
+
+      hydrateProjectFromFiles(project);
+      const team = deps.getTeams().find((candidate) => candidate.id === project.boundTeamId);
+      syncWorkflowFiles(project, team);
+
+      const currentRoleId = project.workflow?.current?.roleId ?? project.workflow?.next?.roleId ?? "none";
+      const relevantPaths = getRelevantDocumentPaths(project, currentRoleId, project.workflow?.activeTaskId, team);
+      const lines = [
+        `Resume role: ${currentRoleId}`,
+        `Task: ${project.workflow?.activeTaskId ?? "none"}`,
+        `Task packet: ${project.workflow?.activeTaskPath ?? "none"}`,
+        `Latest checkpoint: ${project.workflow?.latestCheckpointPath ?? "none"}`,
+        `Mode: ${project.workflow?.mode ?? "lean"}`,
+        `Summary: ${project.workflow?.resumeSummary ?? "none"}`,
+        "Gate issues:",
+        ...(project.workflow?.gateIssues?.length ? project.workflow.gateIssues.map((item) => `- ${item}`) : ["- none"]),
+        "Read bundle:",
+        ...(relevantPaths.length ? relevantPaths.map((item) => `- ${item}`) : ["- none"]),
+      ];
+
+      deps.persistState();
+      deps.updateIndicator(ctx);
+      printOutput(ctx, lines.join("\n"));
+    },
+  });
+
+  pi.registerCommand("workflow-mode", {
+    description: "Show or set workflow strictness mode: lean | delivery | recovery",
+    handler: async (args, ctx) => {
+      const project = getActiveProject(deps.getState());
+      if (!project) {
+        printOutput(ctx, "No active project");
+        return;
+      }
+
+      const requested = args.trim().toLowerCase();
+      const team = deps.getTeams().find((candidate) => candidate.id === project.boundTeamId);
+      if (!requested) {
+        printOutput(ctx, `Workflow mode: ${project.workflow?.mode ?? "lean"}`);
+        return;
+      }
+      if (!["lean", "delivery", "recovery"].includes(requested)) {
+        printOutput(ctx, "Usage: /workflow-mode [lean|delivery|recovery]");
+        return;
+      }
+
+      setWorkflowMode(project, requested as WorkflowMode, team);
+      deps.persistState();
+      deps.updateIndicator(ctx);
+      printOutput(ctx, `Workflow mode set to ${requested}`);
     },
   });
 
@@ -107,7 +182,7 @@ export function registerWorkflowCommands(pi: ExtensionAPI, deps: WorkflowCommand
 
       const lines = tasks.slice(0, 12).map(
         (task) =>
-          `- ${task.id}: ${task.status}${task.assignedRoleId ? ` | owner:${task.assignedRoleId}` : ""}${task.nextRoleId ? ` | next:${task.nextRoleId}` : ""}${task.summary ? ` | ${task.summary}` : ""}`,
+          `- ${task.id}: ${task.status}${task.assignedRoleId ? ` | owner:${task.assignedRoleId}` : ""}${task.nextRoleId ? ` | next:${task.nextRoleId}` : ""}${task.packetPath ? ` | packet:${task.packetPath}` : ""}${task.summary ? ` | ${task.summary}` : ""}`,
       );
       printOutput(ctx, [`Task registry: ${project.workflow?.taskRegistryPath ?? "none"}`, ...lines].join("\n"));
     },
@@ -279,7 +354,14 @@ export function registerWorkflowCommands(pi: ExtensionAPI, deps: WorkflowCommand
       const parsed = parseCheckpointArgs(args);
       const team = deps.getTeams().find((candidate) => candidate.id === project.boundTeamId);
       const roleId = parsed.roleId ?? inferCurrentRoleId(project) ?? "orchestrator";
-      const transition = canRoleTransition(project, team, roleId, parsed.taskId);
+      const transition = canCheckpointTransition(
+        project,
+        team,
+        roleId,
+        parsed.taskId,
+        parsed.nextRoleId,
+        project.currentTask?.evidence,
+      );
       if (transition.blocked && (parsed.status ?? "done") !== "blocked") {
         printOutput(ctx, `Blocked checkpoint for ${roleId}: ${transition.issues.join(" | ")}`);
         return;
@@ -349,7 +431,14 @@ export function registerWorkflowCommands(pi: ExtensionAPI, deps: WorkflowCommand
       const parsed = parseCheckpointArgs(args);
       const team = deps.getTeams().find((candidate) => candidate.id === project.boundTeamId);
       const roleId = parsed.roleId ?? inferCurrentRoleId(project) ?? "orchestrator";
-      const transition = canRoleTransition(project, team, roleId, parsed.taskId);
+      const transition = canCheckpointTransition(
+        project,
+        team,
+        roleId,
+        parsed.taskId,
+        parsed.nextRoleId,
+        project.currentTask?.evidence,
+      );
       if (transition.blocked && (parsed.status ?? "handoff") !== "blocked") {
         printOutput(ctx, `Blocked signoff for ${roleId}: ${transition.issues.join(" | ")}`);
         return;
@@ -528,7 +617,7 @@ function signCheckpoint(
     project.currentTask = {
       id: taskId,
       title: project.currentTask?.title ?? taskId,
-      status: status === "blocked" ? "blocked" : status === "handoff" ? "done" : status === "done" ? "done" : "working",
+      status: status === "blocked" ? "blocked" : status === "handoff" ? "planned" : status === "done" ? "done" : "working",
       assignedRoleId: entry.nextRoleId ?? entry.roleId,
     };
   }

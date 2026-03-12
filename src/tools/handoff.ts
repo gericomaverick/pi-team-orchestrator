@@ -1,7 +1,7 @@
 import { Type } from "@sinclair/typebox";
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { appendProjectLogLine, formatLogLine } from "../state/project-log";
-import { canRoleTransition, syncWorkflowFiles, upsertTaskRecord, writeCheckpointPacket } from "../state/workflow-files";
+import { canHandoffTransition, syncWorkflowFiles, upsertTaskRecord, writeCheckpointPacket } from "../state/workflow-files";
 import type { OrchestratorState, TeamConfig } from "../state/types";
 
 const HandoffParams = Type.Object({
@@ -32,7 +32,7 @@ export function registerHandoffTool(
         return { content: [{ type: "text", text: "No active project" }] };
       }
       const team = getTeams().find((candidate) => candidate.id === project.boundTeamId);
-      const transition = canRoleTransition(project, team, params.fromRoleId, params.taskId);
+      const transition = canHandoffTransition(project, team, params.fromRoleId, params.toRoleId, params.taskId, params.deliverables);
       if (transition.blocked) {
         return {
           content: [
@@ -74,6 +74,8 @@ export function registerHandoffTool(
         title: params.taskId,
         status: "planned",
         assignedRoleId: params.toRoleId,
+        summary: params.summary,
+        evidence: params.deliverables,
       };
 
       if (project.roleStatuses[params.fromRoleId]) {
@@ -123,6 +125,7 @@ export function registerHandoffTool(
         summary: params.summary,
         nextRoleId: params.toRoleId,
         checkpointPath: project.workflow.latestCheckpointPath,
+        evidence: params.deliverables,
         relevantPaths: params.deliverables,
         updatedAt: timestamp,
       });
